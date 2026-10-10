@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-navy: #07294d;
+  --color-brand-blue: #005aa9;
+  --color-brand-skyblue: #00bfff;
+  --color-brand-green: #a5cd39;
+  --color-brand-orange: #f6921e;
+  --color-brand-red: #ec1c24;
+}
+
+body {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}

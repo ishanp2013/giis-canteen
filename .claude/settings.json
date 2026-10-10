@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='python.exe'\")",
+      "PowerShell(Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue)"
+    ]
+  }
+}
