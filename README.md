@@ -1,33 +1,36 @@
 # GIIS Canteen Pre-Order System
 
-A web app for reserving next-day canteen meals at school. Students reserve meals for tomorrow before a daily cut-off time. Canteen staff manage the menu, set daily quantities and track orders. School admins manage accounts, settings and analytics.
+A web app for reserving next-day canteen meals at school. Students order dishes for tomorrow before a daily cut-off time, choosing how many portions of each. Canteen staff manage the menu and prices, set daily quantities and track orders. School admins manage accounts, settings and analytics.
 
 ## Features
 
 **Students**
-- Browse tomorrow's menu and see how many portions of each dish are left
-- Reserve one or more dishes for tomorrow, choosing how many portions of each, before the cut-off time (15:00 by default)
-- Change a reservation's quantity before the cut-off
-- Cancel a reservation before the cut-off
-- View past reservations
+- Browse tomorrow's menu with each dish's price (AED) and how many portions are left
+- Build an order across several dishes, picking a quantity for each (e.g. 2 samosas and 3 fried rice), see the running total and reserve it all in one step
+- Add more portions to a dish they've already reserved
+- Change a reservation's quantity or cancel it before the cut-off time (15:00 by default)
+- View past and upcoming reservations with what each one costs
 
 **Canteen staff**
-- Keep a catalog of dishes (name and description)
+- Keep a catalog of dishes with name, description and price in AED
 - Choose which dishes are offered on which date, and how many portions each
-- See reservations and per-dish counts, and mark orders as `prepared` or `collected`
-- View daily and weekly reports
+- See each day's reservations (quantity, student and order total) and per-dish portion counts, and mark orders as `prepared` or `collected`
+- Download daily and weekly CSV reports, including quantities, unit prices and totals
 
 **School admins**
 - Create, edit and delete student, staff and admin accounts
 - Reset a user's password to a temporary one
 - Set the school-wide daily cut-off time
-- View usage analytics and the audit log
+- View usage analytics (reservations, cancellations, most-reserved dishes, portions not needed) and the audit log
 
 **Rules the system enforces**
-- A student can hold one active reservation per dish per pickup date (with any quantity up to what's left).
-- Reservations stop once a dish's quantity for that day is used up.
-- Students can't create or cancel reservations after the cut-off time.
-- Admin actions are written to the audit log, and every API request is logged.
+- Students can only order for tomorrow, and can't create, change or cancel reservations after the cut-off time.
+- A dish can't be reserved beyond its quantity for that day. Availability counts portions, not reservations.
+- A multi-dish order is all or nothing: if any dish doesn't have enough portions left, nothing is reserved.
+- A student holds one reservation per dish per day. Ordering the same dish again adds to that reservation.
+- Once staff mark an order `prepared`, the student can no longer change or cancel it.
+- Each reservation saves the dish's price when it's made, so later price changes don't affect existing orders.
+- Logins, password changes and admin actions are written to the audit log, and every API request is logged.
 
 ## Tech stack
 
@@ -55,23 +58,40 @@ A web app for reserving next-day canteen meals at school. Students reserve meals
 │   ├── requirements.txt
 │   └── .env.example
 ├── database/
-│   └── schema.sql        # Full schema, roles and default settings
+│   ├── schema.sql        # Full schema, roles and default settings
+│   └── ER_DIAGRAM.md     # Entity-relationship diagram of the schema
 └── frontend/
     ├── src/
     │   ├── api/          # API client and typed endpoint wrappers
     │   ├── components/   # Layout, route guards, shared UI
     │   ├── context/      # Auth context
-    │   └── pages/        # login, student/, canteen/, admin/
+    │   ├── pages/        # login, student/, canteen/, admin/
+    │   └── utils/        # Date and AED currency formatting
     ├── package.json
     └── .env.example
 ```
+
+## Data model
+
+| Table | Holds |
+|-------|-------|
+| `roles` | The three roles: `student`, `canteen_staff`, `school_admin` |
+| `users` | Login accounts, each with one role |
+| `students` | Name, grade and section for student accounts |
+| `menu_items` | The catalog of dishes and their price in AED |
+| `menu_availability` | Which dish is offered on which date, and how many portions |
+| `reservations` | A student's order for one dish on one day: quantity, unit price at time of ordering and status |
+| `audit_logs` | Logins, password changes and admin actions |
+| `settings` | The school-wide daily cut-off time |
+
+See [database/ER_DIAGRAM.md](database/ER_DIAGRAM.md) for the full diagram with columns and relationships.
 
 ## Getting started
 
 ### Prerequisites
 
 - Python 3.10+
-- Node.js 20+
+- Node.js 20.19+ or 22.12+ (required by Vite)
 - PostgreSQL 14+
 
 ### 1. Create the database
@@ -91,7 +111,7 @@ python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-cp .env.example .env            # then edit DATABASE_URL and JWT_SECRET_KEY
+cp .env.example .env            # Windows: copy .env.example .env  — then edit DATABASE_URL and JWT_SECRET_KEY
 alembic stamp head              # mark the fresh schema as up to date
 
 uvicorn app.main:app --reload
@@ -103,21 +123,10 @@ The API runs at http://localhost:8000. Interactive docs are at http://localhost:
 
 ### 3. Create the first admin account
 
-Admin accounts are normally created by another admin, so the first one has to be added by hand. From the `backend/` folder, with the virtual environment active:
+Admin accounts are normally created by another admin, so the first one has to be added by hand. From the `backend/` folder, with the virtual environment active, run this single line (it works in bash, Command Prompt and PowerShell):
 
 ```bash
-python -c "
-from app.database import SessionLocal
-from app.models.user import User
-from app.models.role import Role
-from app.core.security import hash_password
-
-db = SessionLocal()
-role = db.query(Role).filter_by(name='school_admin').one()
-db.add(User(login_id='admin', email='admin@example.com',
-            password_hash=hash_password('ChangeMe123!'), role_id=role.id))
-db.commit()
-"
+python -c "from app.database import SessionLocal; from app.models.user import User; from app.models.role import Role; from app.core.security import hash_password; db = SessionLocal(); role = db.query(Role).filter_by(name='school_admin').one(); db.add(User(login_id='admin', email='admin@example.com', password_hash=hash_password('ChangeMe123!'), role_id=role.id)); db.commit(); print('admin created')"
 ```
 
 Sign in with `admin` / `ChangeMe123!`, then change the password from the app.
@@ -127,11 +136,15 @@ Sign in with `admin` / `ChangeMe123!`, then change the password from the app.
 ```bash
 cd frontend
 npm install
-cp .env.example .env            # VITE_API_BASE_URL defaults to http://localhost:8000
+cp .env.example .env            # Windows: copy .env.example .env  — VITE_API_BASE_URL defaults to http://localhost:8000
 npm run dev
 ```
 
 Open http://localhost:5173. After you sign in, the app sends you to the portal for your role: `/student`, `/canteen` or `/admin`.
+
+### 5. Set up the menu
+
+New dishes, and any dishes created before prices were added, cost AED 0.00 until a price is set. Sign in as canteen staff, add dishes with their prices on **Menu Items**, then offer them for tomorrow with a portion count on **Availability**. Students only see dishes that have availability for tomorrow.
 
 ## Configuration
 
@@ -155,14 +168,23 @@ Open http://localhost:5173. After you sign in, the app sends you to the portal f
 
 ## API overview
 
-Every route except `/auth/login`, `/auth/refresh` and `/health` needs a signed-in user. Routes under `/canteen` and `/admin` also need the matching role. The full reference is at `/docs` while the backend is running.
+Every route except `/auth/login`, `/auth/refresh` and `/health` needs a signed-in user. Student routes need the `student` role, and routes under `/canteen` and `/admin` need the matching role. Prices are in AED. The full reference is at `/docs` while the backend is running.
 
 | Area | Endpoints |
 |------|-----------|
 | Auth | `POST /auth/login`, `POST /auth/refresh`, `GET /auth/me`, `POST /auth/change-password`, `POST /auth/logout` |
-| Student | `GET /menu`, `POST /reservations`, `DELETE /reservations/{id}`, `GET /reservations/mine` |
+| Student | `GET /menu`, `POST /reservations`, `POST /reservations/batch`, `PATCH /reservations/{id}`, `DELETE /reservations/{id}`, `GET /reservations/mine` |
 | Canteen | `GET/POST /canteen/menu`, `PATCH/DELETE /canteen/menu/{id}`, `GET/POST /canteen/availability`, `PATCH/DELETE /canteen/availability/{id}`, `GET /canteen/reservations`, `GET /canteen/reservations/summary`, `PATCH /canteen/reservations/{id}`, `GET /canteen/reports/daily`, `GET /canteen/reports/weekly` |
 | Admin | `GET/POST /admin/users`, `GET/PATCH/DELETE /admin/users/{id}`, `POST /admin/users/{id}/reset-password`, `GET/PATCH /admin/settings`, `GET /admin/analytics`, `GET /admin/logs` |
+
+Student reservation endpoints:
+
+| Endpoint | Body | What it does |
+|----------|------|--------------|
+| `POST /reservations` | `{"availability_id": 4, "quantity": 2}` | Reserve one dish (quantity defaults to 1) |
+| `POST /reservations/batch` | `{"items": [{"availability_id": 4, "quantity": 2}, {"availability_id": 7, "quantity": 3}]}` | Reserve several dishes as one all-or-nothing order |
+| `PATCH /reservations/{id}` | `{"quantity": 3}` | Change the number of portions |
+| `DELETE /reservations/{id}` | none | Cancel the reservation |
 
 ## Database migrations
 
@@ -171,9 +193,10 @@ Migrations are managed with Alembic from the `backend/` folder:
 ```bash
 alembic revision -m "describe the change"   # create a new migration
 alembic upgrade head                        # apply pending migrations
+alembic current                             # show which migration the database is on
 ```
 
-When you change the schema, update `database/schema.sql` as well so that fresh installs still match.
+When you change the schema, update `database/schema.sql` and `database/ER_DIAGRAM.md` as well so that fresh installs and the docs still match.
 
 ## Frontend scripts
 
@@ -183,3 +206,12 @@ When you change the schema, update `database/schema.sql` as well so that fresh i
 | `npm run build` | Type-check and build for production into `dist/` |
 | `npm run preview` | Serve the production build locally |
 | `npm run lint` | Lint with oxlint |
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `ModuleNotFoundError: No module named 'sqlalchemy'` (or another package) | The virtual environment isn't active. Run `venv\Scripts\activate` (Windows) or `source venv/bin/activate`, or call `venv\Scripts\python.exe` directly. |
+| `SyntaxError` when pasting a multi-line `python -c "..."` command | Windows Command Prompt can't take multi-line strings. Use the single-line form above, or save the code to a `.py` file in `backend/` and run it. |
+| A backend change seems to have no effect | `uvicorn --reload` can get stuck while reloading, especially on Windows, and keep serving the old code. Stop the server (Ctrl+C) and start it again. |
+| `NoResultFound` when creating the admin | The roles table is empty. Load `database/schema.sql` first. |
