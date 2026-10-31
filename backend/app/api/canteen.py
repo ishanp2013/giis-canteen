@@ -93,6 +93,7 @@ def _availability_out(entry: MenuAvailability, db: Session) -> AvailabilityOut:
         menu_item_id=entry.menu_item_id,
         menu_item_name=entry.menu_item.name,
         description=entry.menu_item.description,
+        price=entry.menu_item.price,
         available_date=entry.available_date,
         quantity_available=entry.quantity_available,
         remaining_availability=entry.quantity_available - reserved_count(db, entry.id),
@@ -175,6 +176,8 @@ def _staff_reservation_out(r: Reservation) -> StaffReservationOut:
         student_name=r.student.name,
         availability_id=r.availability_id,
         menu_item_name=r.availability.menu_item.name,
+        quantity=r.quantity,
+        unit_price=r.unit_price,
         status=r.status,
         reserved_at=r.reserved_at,
         pickup_date=r.pickup_date,
@@ -255,9 +258,9 @@ def update_reservation_status(
 def _reservations_csv(reservations: list[Reservation]) -> str:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["reservation_id", "student_name", "menu_item_name", "status", "pickup_date"])
+    writer.writerow(["reservation_id", "student_name", "menu_item_name", "quantity", "unit_price_aed", "total_aed", "status", "pickup_date"])
     for r in reservations:
-        writer.writerow([r.id, r.student.name, r.availability.menu_item.name, r.status, r.pickup_date])
+        writer.writerow([r.id, r.student.name, r.availability.menu_item.name, r.quantity, r.unit_price, r.quantity * r.unit_price, r.status, r.pickup_date])
     return buffer.getvalue()
 
 

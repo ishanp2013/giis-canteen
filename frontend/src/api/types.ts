@@ -27,6 +27,7 @@ export interface MenuItem {
   id: number;
   name: string;
   description: string | null;
+  price: number;
 }
 
 export interface Availability {
@@ -34,6 +35,7 @@ export interface Availability {
   menu_item_id: number;
   menu_item_name: string;
   description: string | null;
+  price: number;
   available_date: string;
   quantity_available: number;
   remaining_availability: number;
@@ -44,6 +46,8 @@ export interface Reservation {
   student_id: number;
   availability_id: number;
   menu_item_name: string;
+  quantity: number;
+  unit_price: number;
   status: ReservationStatus;
   reserved_at: string;
   pickup_date: string;

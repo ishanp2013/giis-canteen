@@ -5,17 +5,25 @@ import type { MenuItem } from "../../api/types";
 import { Button, Card, ErrorBanner, Modal, PageHeading, SuccessBanner } from "../../components/ui";
 import { LoadingScreen } from "../../components/LoadingScreen";
 import { IconEdit } from "../../components/icons";
+import { formatAED } from "../../utils/money";
 
-const emptyForm: MenuItemInput = { name: "", description: "" };
+// The price is kept as text while typing, so a half-typed value like "12." isn't reformatted.
+type MenuItemForm = { name: string; description: string; price: string };
+
+const emptyForm: MenuItemForm = { name: "", description: "", price: "" };
+
+function toInput(form: MenuItemForm): MenuItemInput {
+  return { name: form.name, description: form.description, price: Number(form.price) };
+}
 
 export function CanteenMenuPage() {
   const [items, setItems] = useState<MenuItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [form, setForm] = useState<MenuItemInput>(emptyForm);
+  const [form, setForm] = useState<MenuItemForm>(emptyForm);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
-  const [editForm, setEditForm] = useState<MenuItemInput>(emptyForm);
+  const [editForm, setEditForm] = useState<MenuItemForm>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
 
   async function load() {
@@ -33,7 +41,7 @@ export function CanteenMenuPage() {
 
   function openEdit(item: MenuItem) {
     setEditingItem(item);
-    setEditForm({ name: item.name, description: item.description ?? "" });
+    setEditForm({ name: item.name, description: item.description ?? "", price: item.price.toFixed(2) });
   }
 
   async function handleCreate(e: FormEvent) {
@@ -42,7 +50,7 @@ export function CanteenMenuPage() {
     setNotice(null);
     setSubmitting(true);
     try {
-      await canteenApi.createMenuItem(form);
+      await canteenApi.createMenuItem(toInput(form));
       setShowAddModal(false);
       setForm(emptyForm);
       setNotice(`"${form.name}" added to the catalog.`);
@@ -61,7 +69,7 @@ export function CanteenMenuPage() {
     setNotice(null);
     setSubmitting(true);
     try {
-      await canteenApi.updateMenuItem(editingItem.id, editForm);
+      await canteenApi.updateMenuItem(editingItem.id, toInput(editForm));
       setEditingItem(null);
       setNotice(`"${editForm.name}" updated.`);
       await load();
@@ -82,7 +90,7 @@ export function CanteenMenuPage() {
     }
   }
 
-  function renderFormFields(value: MenuItemInput, onChange: (v: MenuItemInput) => void) {
+  function renderFormFields(value: MenuItemForm, onChange: (v: MenuItemForm) => void) {
     return (
       <>
         <div>
@@ -100,6 +108,20 @@ export function CanteenMenuPage() {
             className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
             value={value.description}
             onChange={(e) => onChange({ ...value, description: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm text-gray-700">Price (AED)</label>
+          <input
+            required
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            placeholder="0.00"
+            className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+            value={value.price}
+            onChange={(e) => onChange({ ...value, price: e.target.value })}
           />
         </div>
       </>
@@ -134,6 +156,7 @@ export function CanteenMenuPage() {
                 <tr>
                   <th className="whitespace-nowrap px-4 py-3">Name</th>
                   <th className="whitespace-nowrap px-4 py-3">Description</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right">Price</th>
                   <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -142,6 +165,9 @@ export function CanteenMenuPage() {
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="whitespace-nowrap px-4 py-2.5 font-medium text-gray-900">{item.name}</td>
                     <td className="px-4 py-2.5 text-gray-600">{item.description || "—"}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums text-gray-900">
+                      {formatAED(item.price)}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">
                       <div className="flex justify-end gap-2">
                         <Button variant="secondary" title="Edit item" onClick={() => openEdit(item)}>

@@ -24,7 +24,8 @@ def next_pickup_date():
 
 
 def reserved_count(db: Session, availability_id: int) -> int:
-    stmt = select(func.count(Reservation.id)).where(
+    """Number of portions held by active reservations (not the number of reservations)."""
+    stmt = select(func.sum(Reservation.quantity)).where(
         Reservation.availability_id == availability_id,
         Reservation.status.in_(ACTIVE_STATUSES),
     )

@@ -32,6 +32,7 @@ CREATE TABLE menu_items (
     id          SERIAL PRIMARY KEY,
     name        VARCHAR(255) NOT NULL,
     description TEXT,
+    price       NUMERIC(8, 2) NOT NULL DEFAULT 0 CHECK (price >= 0),  -- AED
     created_by  INTEGER NOT NULL REFERENCES users(id)
 );
 
@@ -50,7 +51,9 @@ CREATE TABLE reservations (
     id             SERIAL PRIMARY KEY,
     student_id     INTEGER     NOT NULL REFERENCES students(id),
     availability_id INTEGER    NOT NULL REFERENCES menu_availability(id),
-    status         VARCHAR(20) NOT NULL DEFAULT 'reserved'
+    quantity       INTEGER     NOT NULL DEFAULT 1 CHECK (quantity > 0),
+    unit_price     NUMERIC(8, 2) NOT NULL DEFAULT 0 CHECK (unit_price >= 0),  -- AED per portion when reserved
+    status        VARCHAR(20) NOT NULL DEFAULT 'reserved'
         CHECK (status IN ('reserved', 'prepared', 'collected', 'cancelled')),
     reserved_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     pickup_date    DATE        NOT NULL

@@ -5,6 +5,7 @@ import type { ReservationCount, ReservationStatus, StaffReservation } from "../.
 import { Button, Card, ErrorBanner, PageHeading } from "../../components/ui";
 import { LoadingScreen } from "../../components/LoadingScreen";
 import { tomorrowISODate } from "../../utils/date";
+import { formatAED } from "../../utils/money";
 
 export function CanteenReservationsPage() {
   const [date, setDate] = useState(tomorrowISODate());
@@ -89,9 +90,11 @@ export function CanteenReservationsPage() {
           <Card key={r.id} className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="font-medium text-gray-900">
-                {r.menu_item_name} — {r.student_name}
+                {r.quantity} × {r.menu_item_name} — {r.student_name}
               </p>
-              <p className="text-sm text-gray-500">Status: {r.status}</p>
+              <p className="text-sm text-gray-500">
+                Status: {r.status} · {formatAED(r.quantity * r.unit_price)}
+              </p>
             </div>
             <div className="flex gap-2">
               <Button

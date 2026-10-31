@@ -1,12 +1,13 @@
 # GIIS Canteen Pre-Order System
 
-A web app for reserving next-day canteen meals at school. Students reserve one meal for tomorrow before a daily cut-off time. Canteen staff manage the menu, set daily quantities and track orders. School admins manage accounts, settings and analytics.
+A web app for reserving next-day canteen meals at school. Students reserve meals for tomorrow before a daily cut-off time. Canteen staff manage the menu, set daily quantities and track orders. School admins manage accounts, settings and analytics.
 
 ## Features
 
 **Students**
 - Browse tomorrow's menu and see how many portions of each dish are left
-- Reserve one meal per day before the cut-off time (15:00 by default)
+- Reserve one or more dishes for tomorrow, choosing how many portions of each, before the cut-off time (15:00 by default)
+- Change a reservation's quantity before the cut-off
 - Cancel a reservation before the cut-off
 - View past reservations
 
@@ -23,7 +24,7 @@ A web app for reserving next-day canteen meals at school. Students reserve one m
 - View usage analytics and the audit log
 
 **Rules the system enforces**
-- A student can hold only one active reservation per pickup date.
+- A student can hold one active reservation per dish per pickup date (with any quantity up to what's left).
 - Reservations stop once a dish's quantity for that day is used up.
 - Students can't create or cancel reservations after the cut-off time.
 - Admin actions are written to the audit log, and every API request is logged.

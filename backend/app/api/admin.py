@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.audit import log_action
 from app.core.dependencies import require_role
-from app.core.reservations import ACTIVE_STATUSES
+from app.core.reservations import ACTIVE_STATUSES, reserved_count
 from app.core.security import generate_temporary_password, hash_password
 from app.database import get_db
 from app.models.audit_log import AuditLog
@@ -193,12 +193,12 @@ def get_analytics(db: Session = Depends(get_db)):
     )
 
     popular_rows = (
-        db.query(MenuItem.name, func.count(Reservation.id).label("count"))
+        db.query(MenuItem.name, func.sum(Reservation.quantity).label("count"))
         .join(MenuAvailability, MenuAvailability.menu_item_id == MenuItem.id)
         .join(Reservation, Reservation.availability_id == MenuAvailability.id)
         .filter(Reservation.status.in_(ACTIVE_STATUSES))
         .group_by(MenuItem.name)
-        .order_by(func.count(Reservation.id).desc())
+        .order_by(func.sum(Reservation.quantity).desc())
         .limit(5)
         .all()
     )
@@ -208,9 +208,7 @@ def get_analytics(db: Session = Depends(get_db)):
     # between quantity made available and what was actually reserved.
     availability_entries = db.query(MenuAvailability).all()
     waste_avoided = sum(
-        max(entry.quantity_available - db.query(func.count(Reservation.id)).filter(
-            Reservation.availability_id == entry.id, Reservation.status.in_(ACTIVE_STATUSES)
-        ).scalar(), 0)
+        max(entry.quantity_available - reserved_count(db, entry.id), 0)
         for entry in availability_entries
     )
 

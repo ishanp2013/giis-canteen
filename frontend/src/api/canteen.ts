@@ -4,6 +4,7 @@ import type { Availability, MenuItem, ReservationCount, ReservationStatus, Staff
 export interface MenuItemInput {
   name: string;
   description?: string;
+  price: number;
 }
 
 export interface AvailabilityInput {

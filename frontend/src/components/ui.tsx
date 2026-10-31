@@ -28,6 +28,48 @@ export function Button({
   );
 }
 
+export function QuantityStepper({
+  value,
+  min = 1,
+  max,
+  onChange,
+  disabled = false,
+}: {
+  value: number;
+  min?: number;
+  max: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}) {
+  const stepClasses =
+    "h-8 w-8 text-lg leading-none text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-300";
+  return (
+    <div className="inline-flex items-center rounded-md border border-gray-300">
+      <button
+        type="button"
+        aria-label="Decrease quantity"
+        className={`${stepClasses} rounded-l-md`}
+        disabled={disabled || value <= min}
+        onClick={() => onChange(value - 1)}
+      >
+        −
+      </button>
+      <span className="w-8 text-center text-sm font-medium text-gray-900" aria-live="polite">
+        {value}
+      </span>
+      <button
+        type="button"
+        aria-label="Increase quantity"
+        className={`${stepClasses} rounded-r-md`}
+        disabled={disabled || value >= max}
+        onClick={() => onChange(value + 1)}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
 export function ErrorBanner({ message }: { message: string }) {
   return <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{message}</div>;
 }
