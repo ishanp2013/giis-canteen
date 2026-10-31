@@ -60,6 +60,8 @@ A web app for reserving next-day canteen meals at school. Students order dishes 
 ├── database/
 │   ├── schema.sql        # Full schema, roles and default settings
 │   └── ER_DIAGRAM.md     # Entity-relationship diagram of the schema
+├── docs/
+│   └── login-code-flow.md  # Beginner-friendly walkthrough of how login works
 └── frontend/
     ├── src/
     │   ├── api/          # API client and typed endpoint wrappers
@@ -86,7 +88,34 @@ A web app for reserving next-day canteen meals at school. Students order dishes 
 
 See [database/ER_DIAGRAM.md](database/ER_DIAGRAM.md) for the full diagram with columns and relationships.
 
-## Getting started
+## Running with Docker
+
+The quickest way to run everything (PostgreSQL, the API and the web app) is Docker Compose. You only need Docker Desktop or Docker Engine with the Compose plugin.
+
+```bash
+cp .env.example .env            # Windows: copy .env.example .env  — then set POSTGRES_PASSWORD, JWT_SECRET_KEY and ADMIN_PASSWORD
+docker compose up -d --build
+```
+
+Open http://localhost:8080 and sign in with `admin` and the `ADMIN_PASSWORD` you set. Change it from the app straight away.
+
+| Service | What it runs | Host port |
+|---------|--------------|-----------|
+| `frontend` | The built React app on nginx. Requests to `/api/*` are proxied to the backend, so the browser sees a single origin. | `8080` |
+| `backend` | FastAPI on uvicorn. On start it runs `alembic stamp head` for a fresh database or `alembic upgrade head` for an existing one, then creates the first admin if `ADMIN_PASSWORD` is set and that login doesn't exist. | `8000` (docs at `/docs`) |
+| `db` | PostgreSQL 17. `database/schema.sql` is loaded the first time the data volume is created. | `5432` |
+
+Useful commands:
+
+```bash
+docker compose logs -f backend   # follow the API logs
+docker compose down              # stop everything (data is kept in the db_data volume)
+docker compose down -v           # stop and delete the database, so schema.sql runs again next time
+```
+
+To use other host ports, set `FRONTEND_PORT`, `BACKEND_PORT` or `DB_PORT` in `.env`. Behind HTTPS, set `COOKIE_SECURE=true`.
+
+## Getting started (without Docker)
 
 ### Prerequisites
 
