@@ -2,7 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.dependencies import require_role
-from app.core.reservations import is_before_cutoff, next_pickup_date, reserved_count, ACTIVE_STATUSES
+from app.core.reservations import (
+    ACTIVE_STATUSES,
+    is_before_cutoff,
+    is_open_for_changes,
+    next_pickup_date,
+    reserved_count,
+)
 from app.database import get_db
 from app.models.menu_availability import MenuAvailability
 from app.models.reservation import Reservation
@@ -205,7 +211,7 @@ def update_reservation_quantity(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Reservation not found")
     if reservation.status != "reserved":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only reservations the canteen hasn't accepted yet can be changed")
-    if not is_before_cutoff(db) or reservation.pickup_date != next_pickup_date():
+    if not is_open_for_changes(db, reservation.pickup_date):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cut-off time has passed; reservation can no longer be changed")
 
     availability = _lock_availability(db, reservation.availability_id)
@@ -240,7 +246,7 @@ def cancel_reservation(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Reservation is already cancelled")
     if reservation.status != "reserved":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only reservations the canteen hasn't accepted yet can be cancelled")
-    if not is_before_cutoff(db):
+    if not is_open_for_changes(db, reservation.pickup_date):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cut-off time has passed; reservation can no longer be cancelled")
 
     reservation.status = "cancelled"

@@ -4,6 +4,7 @@ import { ApiError } from "../../api/client";
 import type { Availability, Reservation } from "../../api/types";
 import { Button, Card, ErrorBanner, PageHeading, QuantityStepper } from "../../components/ui";
 import { LoadingScreen } from "../../components/LoadingScreen";
+import { tomorrowISODate } from "../../utils/date";
 import { formatAED } from "../../utils/money";
 import { STATUS_LABELS, STATUS_STYLES } from "../../utils/reservationStatus";
 
@@ -117,7 +118,7 @@ export function StudentHistoryPage() {
                 <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLES[r.status]}`}>
                   {STATUS_LABELS[r.status]}
                 </span>
-                {r.status === "reserved" && (
+                {r.status === "reserved" && r.pickup_date === tomorrowISODate() && (
                   <Button variant="danger" disabled={busy} onClick={() => void handleCancel(r.id)}>
                     {cancellingId === r.id ? "Cancelling…" : "Cancel"}
                   </Button>

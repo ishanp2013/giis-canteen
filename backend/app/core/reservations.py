@@ -24,6 +24,13 @@ def next_pickup_date():
     return (datetime.now() + timedelta(days=1)).date()
 
 
+def is_open_for_changes(db: Session, pickup_date) -> bool:
+    """Whether a reservation can still be changed or cancelled. The cut-off only
+    applies to the day it governs, i.e. reservations for tomorrow's pickup;
+    reservations from previous days are never affected by today's cut-off."""
+    return pickup_date == next_pickup_date() and is_before_cutoff(db)
+
+
 def reserved_count(db: Session, availability_id: int) -> int:
     """Number of portions held by active reservations (not the number of reservations)."""
     stmt = select(func.sum(Reservation.quantity)).where(
