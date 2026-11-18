@@ -1,6 +1,7 @@
 from app.models.role import Role
 from app.models.user import User
 from app.models.student import Student
+from app.models.teacher import Teacher
 from app.models.menu_item import MenuItem
 from app.models.menu_availability import MenuAvailability
 from app.models.reservation import Reservation
@@ -12,6 +13,7 @@ __all__ = [
     "Role",
     "User",
     "Student",
+    "Teacher",
     "MenuItem",
     "MenuAvailability",
     "Reservation",

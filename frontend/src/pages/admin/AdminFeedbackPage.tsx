@@ -8,6 +8,7 @@ import { FeedbackStatusBadge } from "../FeedbackPage";
 
 const ROLE_LABELS: Record<AdminFeedback["role"], string> = {
   student: "Student",
+  teacher: "Teacher",
   canteen_staff: "Canteen staff",
   school_admin: "Admin",
 };
@@ -49,7 +50,7 @@ export function AdminFeedbackPage() {
 
   return (
     <div>
-      <PageHeading subtitle="Suggestions and complaints sent by students and canteen staff.">Feedback</PageHeading>
+      <PageHeading subtitle="Suggestions and complaints sent by students, teachers and canteen staff.">Feedback</PageHeading>
 
       <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-gray-600">
         <label className="flex items-center gap-2">
@@ -94,7 +95,7 @@ export function AdminFeedbackPage() {
                   {f.subject}
                 </p>
                 <p className="mt-0.5 text-xs text-gray-500">
-                  {ROLE_LABELS[f.role]} · {f.student_name ? `${f.student_name} (${f.login_id})` : f.login_id} ·{" "}
+                  {ROLE_LABELS[f.role]} · {f.sender_name ? `${f.sender_name} (${f.login_id})` : f.login_id} ·{" "}
                   {new Date(f.created_at).toLocaleString()}
                 </p>
               </div>

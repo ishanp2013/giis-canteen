@@ -5,7 +5,7 @@
 CREATE TABLE roles (
     id   SERIAL PRIMARY KEY,
     name VARCHAR(30) NOT NULL UNIQUE
-        CHECK (name IN ('student', 'canteen_staff', 'school_admin'))
+        CHECK (name IN ('student', 'teacher', 'canteen_staff', 'school_admin'))
 );
 
 CREATE TABLE users (
@@ -22,6 +22,15 @@ CREATE TABLE users (
 -- login_id and email only need to be unique among active accounts
 CREATE UNIQUE INDEX users_login_id_active_key ON users (login_id) WHERE is_active;
 CREATE UNIQUE INDEX users_email_active_key ON users (email) WHERE is_active;
+
+-- Teachers order meals the same way students do.
+CREATE TABLE teachers (
+    id          SERIAL PRIMARY KEY,
+    user_id     INTEGER      NOT NULL UNIQUE REFERENCES users(id),
+    name        VARCHAR(255) NOT NULL,
+    employee_id VARCHAR(50)  NOT NULL,  -- unique among active teachers (checked by the API)
+    department  VARCHAR(100)
+);
 
 CREATE TABLE students (
     id      SERIAL PRIMARY KEY,
@@ -55,7 +64,9 @@ CREATE TABLE menu_availability (
 
 CREATE TABLE reservations (
     id             SERIAL PRIMARY KEY,
-    student_id     INTEGER     NOT NULL REFERENCES students(id),
+    -- Exactly one of student_id and teacher_id is set
+    student_id     INTEGER     REFERENCES students(id),
+    teacher_id     INTEGER     REFERENCES teachers(id),
     availability_id INTEGER    NOT NULL REFERENCES menu_availability(id),
     quantity       INTEGER     NOT NULL DEFAULT 1 CHECK (quantity > 0),
     unit_price     NUMERIC(8, 2) NOT NULL DEFAULT 0 CHECK (unit_price >= 0),  -- AED per portion when reserved
@@ -66,7 +77,8 @@ CREATE TABLE reservations (
     pickup_date    DATE        NOT NULL,
     rejection_reason VARCHAR(500),                       -- optional note to the student when rejected
     reviewed_at    TIMESTAMPTZ,                          -- when staff accepted or rejected it
-    reviewed_by    INTEGER     REFERENCES users(id)      -- which staff member did
+    reviewed_by    INTEGER     REFERENCES users(id),     -- which staff member did
+    CONSTRAINT reservations_one_customer_check CHECK (num_nonnulls(student_id, teacher_id) = 1)
 );
 
 CREATE TABLE audit_logs (
@@ -99,6 +111,7 @@ CREATE TABLE feedback (
 
 CREATE INDEX idx_menu_availability_available_date ON menu_availability(available_date);
 CREATE INDEX idx_reservations_student_id ON reservations(student_id);
+CREATE INDEX idx_reservations_teacher_id ON reservations(teacher_id);
 CREATE INDEX idx_reservations_pickup_date ON reservations(pickup_date);
 CREATE INDEX idx_reservations_reserved_at ON reservations(reserved_at);
 CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
@@ -106,6 +119,7 @@ CREATE INDEX idx_feedback_user_id ON feedback(user_id);
 
 INSERT INTO roles (name) VALUES
     ('student'),
+    ('teacher'),
     ('canteen_staff'),
     ('school_admin');
 

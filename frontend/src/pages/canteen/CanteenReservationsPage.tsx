@@ -117,7 +117,12 @@ export function CanteenReservationsPage() {
             <Card key={r.id} className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="font-medium text-gray-900">
-                  {r.quantity} × {r.menu_item_name} — {r.student_name}
+                  {r.quantity} × {r.menu_item_name} — {r.customer_name}
+                  {r.customer_type === "teacher" && (
+                    <span className="ml-2 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
+                      Teacher
+                    </span>
+                  )}
                 </p>
                 <p className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
                   <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[r.status]}`}>
@@ -126,7 +131,7 @@ export function CanteenReservationsPage() {
                   {formatAED(r.quantity * r.unit_price)} · ordered {new Date(r.reserved_at).toLocaleString()}
                 </p>
                 {r.status === "rejected" && r.rejection_reason && (
-                  <p className="mt-1 text-sm text-red-700">Note to student: "{r.rejection_reason}"</p>
+                  <p className="mt-1 text-sm text-red-700">Note sent: "{r.rejection_reason}"</p>
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
@@ -160,11 +165,11 @@ export function CanteenReservationsPage() {
         <Modal title="Reject reservation" onClose={() => setRejecting(null)}>
           <form onSubmit={(e) => void handleReject(e)} className="flex flex-col gap-3">
             <p className="text-sm text-gray-600">
-              {rejecting.quantity} × {rejecting.menu_item_name} for {rejecting.student_name}. The portions go back
-              on sale and the student sees your note.
+              {rejecting.quantity} × {rejecting.menu_item_name} for {rejecting.customer_name}. The portions go back
+              on sale and they see your note.
             </p>
             <div>
-              <label className="mb-1 block text-sm text-gray-700">Note to the student (optional)</label>
+              <label className="mb-1 block text-sm text-gray-700">Note to the {rejecting.customer_type} (optional)</label>
               <textarea
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                 rows={3}

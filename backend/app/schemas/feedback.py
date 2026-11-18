@@ -33,5 +33,5 @@ class AdminFeedbackOut(FeedbackOut):
     user_id: int
     login_id: str
     role: str
-    # Set for student senders
-    student_name: Optional[str] = None
+    # Set for student and teacher senders
+    sender_name: Optional[str] = None

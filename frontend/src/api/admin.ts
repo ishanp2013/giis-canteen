@@ -10,6 +10,7 @@ import type {
   Role,
   Settings,
   User,
+  UserImportResult,
 } from "./types";
 
 export interface UserInput {
@@ -20,6 +21,8 @@ export interface UserInput {
   name?: string;
   grade?: string;
   section?: string;
+  employee_id?: string;
+  department?: string;
 }
 
 export interface UserUpdateInput {
@@ -28,6 +31,8 @@ export interface UserUpdateInput {
   name?: string;
   grade?: string;
   section?: string;
+  employee_id?: string;
+  department?: string;
 }
 
 export const adminApi = {
@@ -37,6 +42,11 @@ export const adminApi = {
   updateUser: (id: number, payload: UserUpdateInput) => api.patch<User>(`/admin/users/${id}`, payload),
   deleteUser: (id: number) => api.delete<void>(`/admin/users/${id}`),
   resetPassword: (id: number) => api.post<{ temporary_password: string }>(`/admin/users/${id}/reset-password`),
+  importUsers: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.upload<UserImportResult>("/admin/users/import", form);
+  },
 
   getSettings: () => api.get<Settings>("/admin/settings"),
   updateSettings: (cutoff_time: string) => api.patch<Settings>("/admin/settings", { cutoff_time }),

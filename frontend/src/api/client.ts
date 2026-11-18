@@ -13,8 +13,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     credentials: "include",
+    // FormData bodies (file uploads) set their own multipart Content-Type.
     headers: {
-      "Content-Type": "application/json",
+      ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       ...(options.headers ?? {}),
     },
   });
@@ -44,6 +45,7 @@ export const api = {
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PATCH", body: body !== undefined ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  upload: <T>(path: string, form: FormData) => request<T>(path, { method: "POST", body: form }),
 };
 
 export async function downloadFile(path: string, filename: string): Promise<void> {

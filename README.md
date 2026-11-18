@@ -1,10 +1,13 @@
 # GIIS Canteen Pre-Order System
 
-A web app for reserving next-day canteen meals at school. Students order dishes for tomorrow before a daily cut-off time, choosing how many portions of each. Canteen staff manage the menu and prices, set daily quantities and track orders. School admins manage accounts, settings and analytics.
+A web app for reserving next-day canteen meals at school. Students and teachers order dishes for tomorrow before a daily cut-off time, choosing how many portions of each. Canteen staff manage the menu and prices, set daily quantities and track orders. School admins manage accounts, settings and analytics.
 
 ## Features
 
-**Students**
+**Students and teachers**
+
+Teachers have their own portal (`/teacher`) with the same menu, reservation and feedback pages as students.
+
 - Browse tomorrow's menu with each dish's price (AED) and how many portions are left
 - Build an order across several dishes, picking a quantity for each (e.g. 2 samosas and 3 fried rice), see the running total and reserve it all in one step
 - Reorder quickly from an **Order again** section that shows dishes they've reserved recently that are on tomorrow's menu
@@ -16,16 +19,17 @@ A web app for reserving next-day canteen meals at school. Students order dishes 
 **Canteen staff**
 - Keep a catalog of dishes with name, description and price in AED
 - Choose which dishes are offered on which date, and how many portions each
-- See each day's reservations (quantity, student, order total and when it was ordered) and per-dish portion counts
-- Accept or reject each new order, with an optional note to the student when rejecting, then mark accepted orders as `prepared` and `collected`
+- See each day's reservations (quantity, who ordered it with teacher orders labelled, order total and when it was ordered) and per-dish portion counts
+- Accept or reject each new order, with an optional note to the student or teacher when rejecting, then mark accepted orders as `prepared` and `collected`
 - Download daily and weekly CSV reports, including quantities, unit prices, totals, order times and rejection notes
 - Send suggestions and complaints to the school admins
 
 **School admins**
-- Create, edit and delete student, staff and admin accounts (deleting deactivates the account and keeps its history)
+- Create, edit and delete student, teacher, staff and admin accounts (deleting deactivates the account and keeps its history). Teachers have a name, employee ID and optional department.
+- Bulk import student, teacher and canteen staff accounts from a CSV or Excel (.xlsx) file (see [Importing accounts](#importing-accounts))
 - Reset a user's password to a temporary one
 - See every reservation made in a date range (the past week by default) with the exact time it was made, whether it was accepted or rejected, who handled it, and the rejection note
-- Read suggestions and complaints from students and staff, and mark them resolved
+- Read suggestions and complaints from students, teachers and staff, and mark them resolved
 - Set the school-wide daily cut-off time
 - View usage analytics (reservations, cancellations, most-reserved dishes, portions not needed) and the audit log
 
@@ -87,6 +91,7 @@ A web app for reserving next-day canteen meals at school. Students order dishes 
 | `roles` | The three roles: `student`, `canteen_staff`, `school_admin` |
 | `users` | Login accounts, each with one role |
 | `students` | Name, grade and section for student accounts |
+| `teachers` | Name, employee ID and department for teacher accounts |
 | `menu_items` | The catalog of dishes and their price in AED |
 | `menu_availability` | Which dish is offered on which date, and how many portions |
 | `reservations` | A student's order for one dish on one day: quantity, unit price at time of ordering, status, and who accepted or rejected it (with an optional rejection note) |
@@ -210,10 +215,10 @@ Every route except `/auth/login`, `/auth/refresh` and `/health` needs a signed-i
 | Area | Endpoints |
 |------|-----------|
 | Auth | `POST /auth/login`, `POST /auth/refresh`, `GET /auth/me`, `POST /auth/change-password`, `POST /auth/logout` |
-| Student | `GET /menu`, `POST /reservations`, `POST /reservations/batch`, `PATCH /reservations/{id}`, `DELETE /reservations/{id}`, `GET /reservations/mine` |
+| Student, teacher | `GET /menu`, `POST /reservations`, `POST /reservations/batch`, `PATCH /reservations/{id}`, `DELETE /reservations/{id}`, `GET /reservations/mine` |
 | Canteen | `GET/POST /canteen/menu`, `PATCH/DELETE /canteen/menu/{id}`, `GET/POST /canteen/availability`, `PATCH/DELETE /canteen/availability/{id}`, `GET /canteen/reservations`, `GET /canteen/reservations/summary`, `PATCH /canteen/reservations/{id}`, `GET /canteen/reports/daily`, `GET /canteen/reports/weekly` |
-| Admin | `GET/POST /admin/users`, `GET/PATCH/DELETE /admin/users/{id}`, `POST /admin/users/{id}/reset-password`, `GET /admin/reservations`, `GET /admin/feedback`, `PATCH /admin/feedback/{id}`, `GET/PATCH /admin/settings`, `GET /admin/analytics`, `GET /admin/logs` |
-| Feedback (student, canteen staff) | `POST /feedback`, `GET /feedback/mine` |
+| Admin | `GET/POST /admin/users`, `POST /admin/users/import`, `GET/PATCH/DELETE /admin/users/{id}`, `POST /admin/users/{id}/reset-password`, `GET /admin/reservations`, `GET /admin/feedback`, `PATCH /admin/feedback/{id}`, `GET/PATCH /admin/settings`, `GET /admin/analytics`, `GET /admin/logs` |
+| Feedback (student, teacher, canteen staff) | `POST /feedback`, `GET /feedback/mine` |
 
 Canteen staff move an order through its statuses with `PATCH /canteen/reservations/{id}`, e.g. `{"status": "accepted"}`, or `{"status": "rejected", "rejection_reason": "Sorry, we ran out of rice"}`. The order is `reserved` → `accepted` or `rejected` → `prepared` → `collected`.
 
@@ -225,6 +230,23 @@ Student reservation endpoints:
 | `POST /reservations/batch` | `{"items": [{"availability_id": 4, "quantity": 2}, {"availability_id": 7, "quantity": 3}]}` | Reserve several dishes as one all-or-nothing order |
 | `PATCH /reservations/{id}` | `{"quantity": 3}` | Change the number of portions |
 | `DELETE /reservations/{id}` | none | Cancel the reservation |
+
+## Importing accounts
+
+On the **Accounts** page, **Import from file** creates many accounts at once from a `.csv` or `.xlsx` file (first sheet), with one account per row and a header row. **Download template** in the dialog gives a starting file.
+
+| Column | Required | Notes |
+|--------|----------|-------|
+| `login_id` | yes | Must not already be in use |
+| `email` | yes | Must be a valid email that isn't already in use |
+| `role` | yes | `student`, `teacher` or `canteen_staff` (`staff` also works). Admin accounts can't be imported. |
+| `password` | no | Leave blank to generate a temporary password. Generated passwords are shown once after the import, with a button to download them as a CSV. |
+| `name` | students, teachers | |
+| `grade`, `section` | students | |
+| `employee_id` | teachers | Must not already be in use by an active teacher |
+| `department` | no | Teachers only |
+
+Header capitals, spaces and hyphens are ignored, so `Login ID` works as well as `login_id`. Blank rows are skipped. Every row is checked before anything is saved: if any row has a problem, nothing is imported and each problem is listed by spreadsheet row number. Files can have up to 500 accounts and be up to 2 MB.
 
 ## Database migrations
 

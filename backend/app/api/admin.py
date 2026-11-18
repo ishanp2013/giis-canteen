@@ -1,7 +1,13 @@
+import csv
+import io
+import re
+from collections import Counter
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from openpyxl import load_workbook
+from pydantic import ValidationError
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.audit import log_action
@@ -17,11 +23,22 @@ from app.models.reservation import Reservation
 from app.models.role import Role
 from app.models.setting import Setting
 from app.models.student import Student
+from app.models.teacher import Teacher
 from app.models.user import User
 from app.schemas.admin import AnalyticsOut, AuditLogOut, PopularItemOut, SettingsOut, SettingsUpdate
 from app.schemas.feedback import AdminFeedbackOut, FeedbackCategory, FeedbackStatus, FeedbackStatusUpdate
 from app.schemas.reservation import AdminReservationOut, ReservationStatus
-from app.schemas.user import PasswordResetOut, StudentOut, UserCreate, UserOut, UserUpdate
+from app.schemas.user import (
+    ImportedUserOut,
+    ImportRowError,
+    PasswordResetOut,
+    StudentOut,
+    TeacherOut,
+    UserCreate,
+    UserImportResult,
+    UserOut,
+    UserUpdate,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_role("school_admin"))])
 
@@ -49,7 +66,65 @@ def _user_out(user: User) -> UserOut:
         role=user.role.name,
         created_at=user.created_at,
         student=StudentOut.model_validate(user.student) if user.student else None,
+        teacher=TeacherOut.model_validate(user.teacher) if user.teacher else None,
     )
+
+
+def _employee_id_taken(db: Session, employee_id: str, exclude_user_id: int | None = None) -> bool:
+    query = (
+        db.query(Teacher)
+        .join(User, User.id == Teacher.user_id)
+        .filter(Teacher.employee_id == employee_id, User.is_active)
+    )
+    if exclude_user_id is not None:
+        query = query.filter(User.id != exclude_user_id)
+    return db.query(query.exists()).scalar()
+
+
+def _new_user_problem(db: Session, payload: UserCreate) -> str | None:
+    """Why this account can't be created, or None if it can."""
+    if not payload.login_id.strip():
+        return "login_id is required"
+    if not payload.password:
+        return "password is required"
+    if payload.role == "student" and not all([payload.name, payload.grade, payload.section]):
+        return "name, grade, and section are required for student accounts"
+    if payload.role == "teacher" and not all([payload.name, payload.employee_id]):
+        return "name and employee_id are required for teacher accounts"
+
+    active = db.query(User).filter(User.is_active)
+    if active.filter(User.login_id == payload.login_id).first() is not None:
+        return f"Login ID '{payload.login_id}' is already in use"
+    if active.filter(User.email == payload.email).first() is not None:
+        return f"Email '{payload.email}' is already in use"
+    if payload.role == "teacher" and _employee_id_taken(db, payload.employee_id):
+        return f"Employee ID '{payload.employee_id}' is already in use"
+    return None
+
+
+def _add_user(db: Session, payload: UserCreate) -> User:
+    """Stage a validated account and its student or teacher profile; the caller commits."""
+    user = User(
+        login_id=payload.login_id,
+        email=payload.email,
+        password_hash=hash_password(payload.password),
+        role_id=_get_role(db, payload.role).id,
+    )
+    db.add(user)
+    db.flush()
+
+    if payload.role == "student":
+        db.add(Student(user_id=user.id, name=payload.name, grade=payload.grade, section=payload.section))
+    elif payload.role == "teacher":
+        db.add(
+            Teacher(
+                user_id=user.id,
+                name=payload.name,
+                employee_id=payload.employee_id,
+                department=payload.department or None,
+            )
+        )
+    return user
 
 
 @router.post("/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
@@ -58,28 +133,148 @@ def create_user(
     current_user: User = Depends(require_role("school_admin")),
     db: Session = Depends(get_db),
 ):
-    """FR-A1: add a student, staff, or admin account."""
-    role = _get_role(db, payload.role)
+    """FR-A1: add a student, teacher, staff, or admin account."""
+    problem = _new_user_problem(db, payload)
+    if problem is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, problem)
 
-    if payload.role == "student" and not all([payload.name, payload.grade, payload.section]):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "name, grade, and section are required for student accounts")
-
-    user = User(
-        login_id=payload.login_id,
-        email=payload.email,
-        password_hash=hash_password(payload.password),
-        role_id=role.id,
-    )
-    db.add(user)
-    db.flush()
-
-    if payload.role == "student":
-        db.add(Student(user_id=user.id, name=payload.name, grade=payload.grade, section=payload.section))
-
+    user = _add_user(db, payload)
     log_action(db, current_user.id, "user_created", {"created_user_id": user.id, "role": payload.role})
     db.commit()
     db.refresh(user)
     return _user_out(user)
+
+
+# Bulk import: the columns a CSV or Excel file may have. Spaces, hyphens and
+# capitals in headers are ignored, so "Login ID" and "login_id" both work.
+IMPORT_COLUMNS = ("login_id", "email", "password", "role", "name", "grade", "section", "employee_id", "department")
+IMPORT_ROLES = {"student": "student", "teacher": "teacher", "canteen_staff": "canteen_staff", "staff": "canteen_staff"}
+IMPORT_MAX_BYTES = 2 * 1024 * 1024
+IMPORT_MAX_ROWS = 500
+
+
+def _normalize_header(value: object) -> str:
+    return re.sub(r"[\s\-]+", "_", str(value or "").strip().lower())
+
+
+def _cell_text(value: object) -> str:
+    # Excel stores numbers like a grade of 5 as 5.0; keep them as "5".
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return "" if value is None else str(value).strip()
+
+
+def _read_import_rows(filename: str, content: bytes) -> list[dict[str, str]]:
+    """Parse an uploaded .csv or .xlsx into one dict per row, keyed by column name."""
+    if filename.lower().endswith(".xlsx"):
+        try:
+            workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        except Exception as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Couldn't read the Excel file") from exc
+        rows = [[_cell_text(v) for v in row] for row in workbook.worksheets[0].iter_rows(values_only=True)]
+        workbook.close()
+    elif filename.lower().endswith(".csv"):
+        try:
+            text = content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = content.decode("cp1252", errors="replace")
+        rows = [[cell.strip() for cell in row] for row in csv.reader(io.StringIO(text))]
+    else:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Upload a .csv or .xlsx file")
+
+    if not rows:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The file is empty")
+    headers = [_normalize_header(h) for h in rows[0]]
+    missing = [c for c in ("login_id", "email", "role") if c not in headers]
+    if missing:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Missing required column(s): {', '.join(missing)}")
+
+    return [
+        {h: (row[i] if i < len(row) else "") for i, h in enumerate(headers) if h in IMPORT_COLUMNS}
+        for row in rows[1:]
+    ]
+
+
+@router.post("/users/import", response_model=UserImportResult)
+def import_users(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_role("school_admin")),
+    db: Session = Depends(get_db),
+):
+    """Create many student, teacher and canteen staff accounts from a CSV or
+    Excel file. Every row is checked first; if any row has a problem, nothing is
+    imported and the errors are returned. Rows with a blank password get a
+    generated temporary password, returned in the result."""
+    content = file.file.read(IMPORT_MAX_BYTES + 1)
+    if len(content) > IMPORT_MAX_BYTES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is too large (2 MB max)")
+
+    # Spreadsheet row numbers: the header is row 1. Fully blank rows are skipped.
+    rows = [(i, r) for i, r in enumerate(_read_import_rows(file.filename or "", content), start=2) if any(r.values())]
+    if not rows:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The file has no user rows")
+    if len(rows) > IMPORT_MAX_ROWS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Import at most {IMPORT_MAX_ROWS} users at a time")
+
+    errors: list[ImportRowError] = []
+    valid: list[tuple[int, UserCreate, bool]] = []
+    seen: dict[str, set[str]] = {"login_id": set(), "email": set(), "employee_id": set()}
+
+    for row_number, row in rows:
+        role = IMPORT_ROLES.get(_normalize_header(row.get("role")))
+        if _normalize_header(row.get("role")) in ("school_admin", "admin"):
+            errors.append(ImportRowError(row=row_number, message="Admin accounts can't be imported; add them one at a time"))
+            continue
+        if role is None:
+            errors.append(ImportRowError(
+                row=row_number,
+                message=f"Role '{row.get('role', '')}' isn't valid; use student, teacher or canteen_staff",
+            ))
+            continue
+
+        generated = not row.get("password")
+        data = {k: v for k, v in row.items() if v and k in UserCreate.model_fields}
+        data.update(role=role, password=row.get("password") or generate_temporary_password())
+        try:
+            payload = UserCreate.model_validate(data)
+        except ValidationError as exc:
+            problems = "; ".join(f"{e['loc'][0]}: {e['msg']}" for e in exc.errors())
+            errors.append(ImportRowError(row=row_number, message=problems))
+            continue
+
+        problem = _new_user_problem(db, payload)
+        if problem is None:
+            for field in ("login_id", "email", "employee_id"):
+                value = getattr(payload, field)
+                if value and value in seen[field]:
+                    problem = f"{field} '{value}' appears more than once in the file"
+                    break
+        if problem is not None:
+            errors.append(ImportRowError(row=row_number, message=problem))
+            continue
+
+        for field in ("login_id", "email", "employee_id"):
+            if getattr(payload, field):
+                seen[field].add(getattr(payload, field))
+        valid.append((row_number, payload, generated))
+
+    if errors:
+        return UserImportResult(created=[], errors=errors)
+
+    created = []
+    for row_number, payload, generated in valid:
+        _add_user(db, payload)
+        created.append(ImportedUserOut(
+            row=row_number,
+            login_id=payload.login_id,
+            role=payload.role,
+            temporary_password=payload.password if generated else None,
+        ))
+
+    roles = Counter(p.role for _, p, _ in valid)
+    log_action(db, current_user.id, "users_imported", {"count": len(created), "roles": dict(roles)})
+    db.commit()
+    return UserImportResult(created=created, errors=[])
 
 
 @router.get("/users", response_model=list[UserOut])
@@ -88,7 +283,7 @@ def list_users(db: Session = Depends(get_db)):
     users = (
         db.query(User)
         .filter(User.is_active)
-        .options(joinedload(User.role), joinedload(User.student))
+        .options(joinedload(User.role), joinedload(User.student), joinedload(User.teacher))
         .all()
     )
     return [_user_out(u) for u in users]
@@ -110,8 +305,12 @@ def update_user(
     """FR-A1/FR-A2: edit an account, including assigning/changing its role."""
     user = _get_active_user(db, user_id)
 
-    if payload.email is not None:
+    if payload.email is not None and payload.email != user.email:
+        if db.query(User).filter(User.is_active, User.email == payload.email, User.id != user.id).first():
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Email '{payload.email}' is already in use")
         user.email = payload.email
+    if payload.employee_id and _employee_id_taken(db, payload.employee_id, exclude_user_id=user.id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Employee ID '{payload.employee_id}' is already in use")
 
     if payload.role is not None:
         user.role_id = _get_role(db, payload.role).id
@@ -119,14 +318,27 @@ def update_user(
             if not all([payload.name, payload.grade, payload.section]):
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "name, grade, and section are required to make this user a student")
             db.add(Student(user_id=user.id, name=payload.name, grade=payload.grade, section=payload.section))
+        if payload.role == "teacher" and user.teacher is None:
+            if not all([payload.name, payload.employee_id]):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "name and employee_id are required to make this user a teacher")
+            db.add(Teacher(user_id=user.id, name=payload.name, employee_id=payload.employee_id, department=payload.department or None))
 
-    if user.student is not None and any([payload.name, payload.grade, payload.section]):
+    # Update the details of the profile that matches the account's role.
+    role_name = payload.role or user.role.name
+    if role_name == "student" and user.student is not None:
         if payload.name is not None:
             user.student.name = payload.name
         if payload.grade is not None:
             user.student.grade = payload.grade
         if payload.section is not None:
             user.student.section = payload.section
+    if role_name == "teacher" and user.teacher is not None:
+        if payload.name is not None:
+            user.teacher.name = payload.name
+        if payload.employee_id is not None:
+            user.teacher.employee_id = payload.employee_id
+        if payload.department is not None:
+            user.teacher.department = payload.department or None
 
     log_action(db, current_user.id, "user_updated", {"updated_user_id": user.id})
     db.commit()
@@ -153,14 +365,19 @@ def delete_user(
     user = _get_active_user(db, user_id)
     user.is_active = False
 
-    # Free up the portions held by the student's upcoming orders. Orders already
-    # prepared or collected are left as they are.
-    cancelled = 0
+    # Free up the portions held by the student's or teacher's upcoming orders.
+    # Orders already prepared or collected are left as they are.
+    owners = []
     if user.student is not None:
+        owners.append(Reservation.student_id == user.student.id)
+    if user.teacher is not None:
+        owners.append(Reservation.teacher_id == user.teacher.id)
+    cancelled = 0
+    if owners:
         cancelled = (
             db.query(Reservation)
             .filter(
-                Reservation.student_id == user.student.id,
+                or_(*owners),
                 Reservation.status.in_(("reserved", "accepted")),
                 Reservation.pickup_date >= date.today(),
             )
@@ -295,6 +512,7 @@ def list_reservations(
         .options(
             joinedload(Reservation.availability).joinedload(MenuAvailability.menu_item),
             joinedload(Reservation.student),
+            joinedload(Reservation.teacher),
             joinedload(Reservation.reviewer),
         )
         .filter(reserved_day >= start, reserved_day <= end)
@@ -305,10 +523,9 @@ def list_reservations(
     return [
         AdminReservationOut(
             id=r.id,
-            student_id=r.student_id,
-            student_name=r.student.name,
-            student_grade=r.student.grade,
-            student_section=r.student.section,
+            customer_type=r.customer_type,
+            customer_name=r.customer_name,
+            customer_detail=r.customer_detail,
             availability_id=r.availability_id,
             menu_item_name=r.availability.menu_item.name,
             quantity=r.quantity,
@@ -330,10 +547,11 @@ def list_feedback(
     status_filter: FeedbackStatus | None = Query(default=None, alias="status"),
     db: Session = Depends(get_db),
 ):
-    """Suggestions and complaints sent by students and canteen staff, newest first."""
+    """Suggestions and complaints sent by students, teachers and canteen staff, newest first."""
     query = db.query(Feedback).options(
         joinedload(Feedback.user).joinedload(User.role),
         joinedload(Feedback.user).joinedload(User.student),
+        joinedload(Feedback.user).joinedload(User.teacher),
     )
     if category is not None:
         query = query.filter(Feedback.category == category)
@@ -374,5 +592,5 @@ def _feedback_out(feedback: Feedback) -> AdminFeedbackOut:
         user_id=user.id,
         login_id=user.login_id,
         role=user.role.name,
-        student_name=user.student.name if user.student else None,
+        sender_name=(user.teacher or user.student).name if (user.teacher or user.student) else None,
     )

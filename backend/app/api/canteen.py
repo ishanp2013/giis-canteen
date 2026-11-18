@@ -86,7 +86,7 @@ def delete_menu_item(item_id: int, db: Session = Depends(get_db)):
     db.commit()
 
 
-# --- Availability: per-day quantities students can reserve against ----------
+# --- Availability: per-day quantities students and teachers can reserve against
 
 def _availability_out(entry: MenuAvailability, db: Session) -> AvailabilityOut:
     return AvailabilityOut(
@@ -173,8 +173,8 @@ def delete_availability(availability_id: int, db: Session = Depends(get_db)):
 def _staff_reservation_out(r: Reservation) -> StaffReservationOut:
     return StaffReservationOut(
         id=r.id,
-        student_id=r.student_id,
-        student_name=r.student.name,
+        customer_type=r.customer_type,
+        customer_name=r.customer_name,
         availability_id=r.availability_id,
         menu_item_name=r.availability.menu_item.name,
         quantity=r.quantity,
@@ -198,6 +198,7 @@ def list_reservations(
         .options(
             joinedload(Reservation.availability).joinedload(MenuAvailability.menu_item),
             joinedload(Reservation.student),
+            joinedload(Reservation.teacher),
         )
         .filter(Reservation.pickup_date == (pickup_date or next_pickup_date()))
         .all()
@@ -257,6 +258,7 @@ def update_reservation_status(
         .options(
             joinedload(Reservation.availability).joinedload(MenuAvailability.menu_item),
             joinedload(Reservation.student),
+            joinedload(Reservation.teacher),
         )
         .filter(Reservation.id == reservation_id)
         .first()
@@ -283,9 +285,9 @@ def update_reservation_status(
 def _reservations_csv(reservations: list[Reservation]) -> str:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["reservation_id", "student_name", "menu_item_name", "quantity", "unit_price_aed", "total_aed", "status", "pickup_date", "reserved_at", "rejection_reason"])
+    writer.writerow(["reservation_id", "customer_type", "customer_name", "menu_item_name", "quantity", "unit_price_aed", "total_aed", "status", "pickup_date", "reserved_at", "rejection_reason"])
     for r in reservations:
-        writer.writerow([r.id, r.student.name, r.availability.menu_item.name, r.quantity, r.unit_price, r.quantity * r.unit_price, r.status, r.pickup_date, r.reserved_at.isoformat(timespec="seconds"), r.rejection_reason or ""])
+        writer.writerow([r.id, r.customer_type, r.customer_name, r.availability.menu_item.name, r.quantity, r.unit_price, r.quantity * r.unit_price, r.status, r.pickup_date, r.reserved_at.isoformat(timespec="seconds"), r.rejection_reason or ""])
     return buffer.getvalue()
 
 
@@ -295,6 +297,7 @@ def _reservations_for_range(db: Session, start: date, end: date) -> list[Reserva
         .options(
             joinedload(Reservation.availability).joinedload(MenuAvailability.menu_item),
             joinedload(Reservation.student),
+            joinedload(Reservation.teacher),
         )
         .filter(Reservation.pickup_date >= start, Reservation.pickup_date <= end)
         .all()

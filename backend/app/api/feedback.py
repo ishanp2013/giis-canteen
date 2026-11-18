@@ -10,14 +10,14 @@ from app.schemas.feedback import FeedbackCreate, FeedbackOut
 router = APIRouter(
     prefix="/feedback",
     tags=["feedback"],
-    dependencies=[Depends(require_role("student", "canteen_staff"))],
+    dependencies=[Depends(require_role("student", "teacher", "canteen_staff"))],
 )
 
 
 @router.post("", response_model=FeedbackOut, status_code=status.HTTP_201_CREATED)
 def submit_feedback(
     payload: FeedbackCreate,
-    current_user: User = Depends(require_role("student", "canteen_staff")),
+    current_user: User = Depends(require_role("student", "teacher", "canteen_staff")),
     db: Session = Depends(get_db),
 ):
     """Send a suggestion or complaint to the school admins."""
@@ -35,7 +35,7 @@ def submit_feedback(
 
 @router.get("/mine", response_model=list[FeedbackOut])
 def my_feedback(
-    current_user: User = Depends(require_role("student", "canteen_staff")),
+    current_user: User = Depends(require_role("student", "teacher", "canteen_staff")),
     db: Session = Depends(get_db),
 ):
     """The suggestions and complaints this user has sent, newest first."""

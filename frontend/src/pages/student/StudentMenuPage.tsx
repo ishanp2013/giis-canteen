@@ -93,7 +93,8 @@ export function StudentMenuPage() {
             <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
               You've reserved {held[item.id].quantity}
             </span>{" "}
-            <Link to="/student/history" className="text-brand-blue hover:underline">
+            {/* Relative, so it works in both the student and teacher portals */}
+            <Link to="../history" className="text-brand-blue hover:underline">
               Manage
             </Link>
           </p>

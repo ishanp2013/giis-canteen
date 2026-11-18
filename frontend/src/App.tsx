@@ -38,6 +38,8 @@ function HomeRedirect() {
   switch (user.role) {
     case "student":
       return <Navigate to="/student/menu" replace />;
+    case "teacher":
+      return <Navigate to="/teacher/menu" replace />;
     case "canteen_staff":
       return <Navigate to="/canteen/menu" replace />;
     case "school_admin":
@@ -61,6 +63,27 @@ export default function App() {
                 { to: "/student/menu", label: "Menu", icon: IconMenu },
                 { to: "/student/history", label: "My Reservations", icon: IconHistory },
                 { to: "/student/feedback", label: "Feedback", icon: IconMessage },
+              ]}
+            />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="menu" element={<StudentMenuPage />} />
+        <Route path="history" element={<StudentHistoryPage />} />
+        <Route path="feedback" element={<FeedbackPage />} />
+      </Route>
+
+      {/* Teachers order meals the same way students do, so they share the student pages. */}
+      <Route
+        path="/teacher"
+        element={
+          <ProtectedRoute allowedRoles={["teacher"]}>
+            <PortalLayout
+              title="Teacher"
+              navItems={[
+                { to: "/teacher/menu", label: "Menu", icon: IconMenu },
+                { to: "/teacher/history", label: "My Reservations", icon: IconHistory },
+                { to: "/teacher/feedback", label: "Feedback", icon: IconMessage },
               ]}
             />
           </ProtectedRoute>

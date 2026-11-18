@@ -1,4 +1,4 @@
-export type Role = "student" | "canteen_staff" | "school_admin";
+export type Role = "student" | "teacher" | "canteen_staff" | "school_admin";
 
 // "reserved" means waiting for canteen staff to accept or reject the order.
 export type ReservationStatus = "reserved" | "accepted" | "rejected" | "prepared" | "collected" | "cancelled";
@@ -15,6 +15,12 @@ export interface Student {
   section: string;
 }
 
+export interface Teacher {
+  name: string;
+  employee_id: string;
+  department: string | null;
+}
+
 export interface User {
   id: number;
   login_id: string;
@@ -22,6 +28,12 @@ export interface User {
   role: Role;
   created_at: string;
   student: Student | null;
+  teacher: Teacher | null;
+}
+
+export interface UserImportResult {
+  created: { row: number; login_id: string; role: Role; temporary_password: string | null }[];
+  errors: { row: number; message: string }[];
 }
 
 export interface MenuItem {
@@ -44,7 +56,6 @@ export interface Availability {
 
 export interface Reservation {
   id: number;
-  student_id: number;
   availability_id: number;
   menu_item_id: number;
   menu_item_name: string;
@@ -57,13 +68,15 @@ export interface Reservation {
 }
 
 export interface StaffReservation extends Omit<Reservation, "menu_item_id"> {
-  student_name: string;
+  // Who ordered: a student or a teacher
+  customer_type: "student" | "teacher";
+  customer_name: string;
   reviewed_at: string | null;
 }
 
 export interface AdminReservation extends StaffReservation {
-  student_grade: string;
-  student_section: string;
+  // Grade and section for a student; department and employee ID for a teacher
+  customer_detail: string;
   reviewed_by_login_id: string | null;
 }
 
@@ -83,7 +96,7 @@ export interface AdminFeedback extends Feedback {
   user_id: number;
   login_id: string;
   role: Role;
-  student_name: string | null;
+  sender_name: string | null;
 }
 
 export interface ReservationCount {

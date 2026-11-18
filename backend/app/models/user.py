@@ -25,3 +25,4 @@ class User(Base):
 
     role: Mapped["Role"] = relationship(back_populates="users")
     student: Mapped["Student | None"] = relationship(back_populates="user", uselist=False)
+    teacher: Mapped["Teacher | None"] = relationship(back_populates="user", uselist=False)

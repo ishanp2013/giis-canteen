@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models.menu_availability import MenuAvailability
 from app.models.reservation import Reservation
 from app.models.student import Student
+from app.models.teacher import Teacher
 from app.models.user import User
 from app.schemas.menu import AvailabilityOut
 from app.schemas.reservation import (
@@ -16,20 +17,34 @@ from app.schemas.reservation import (
     ReservationQuantityUpdate,
 )
 
-router = APIRouter(tags=["student"], dependencies=[Depends(require_role("student"))])
+# Ordering endpoints shared by students and teachers.
+router = APIRouter(tags=["student"],dependencies=[Depends(require_role("student", "teacher"))])
 
 
-def _get_student(current_user: User, db: Session) -> Student:
+def _get_customer(current_user: User, db: Session) -> dict[str, int]:
+    """Identify the signed-in student or teacher as the reservation column that
+    points at them, e.g. {"student_id": 4} or {"teacher_id": 2}. It's used both
+    to filter their reservations and to create new ones."""
+    if current_user.role.name == "teacher":
+        teacher = db.query(Teacher).filter(Teacher.user_id == current_user.id).first()
+        if teacher is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Teacher profile not found")
+        return {"teacher_id": teacher.id}
+
     student = db.query(Student).filter(Student.user_id == current_user.id).first()
     if student is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Student profile not found")
-    return student
+    return {"student_id": student.id}
+
+
+def _owned_by(customer: dict[str, int]) -> list:
+    """Filter conditions matching the reservations of the given customer."""
+    return [getattr(Reservation, column) == value for column, value in customer.items()]
 
 
 def _to_reservation_out(reservation: Reservation) -> ReservationOut:
     return ReservationOut(
         id=reservation.id,
-        student_id=reservation.student_id,
         availability_id=reservation.availability_id,
         menu_item_id=reservation.availability.menu_item_id,
         menu_item_name=reservation.availability.menu_item.name,
@@ -58,9 +73,9 @@ def _not_enough_left(remaining: int, item_name: str = "this item") -> HTTPExcept
     return HTTPException(status.HTTP_400_BAD_REQUEST, f"Only {remaining} left of {item_name}")
 
 
-def _reserve(db: Session, student: Student, item: ReservationCreate) -> Reservation:
+def _reserve(db: Session, customer: dict[str, int], item: ReservationCreate) -> Reservation:
     """Validate and stage one dish of an order; the caller commits.
-    Ordering a dish the student already holds adds to that reservation."""
+    Ordering a dish the customer already holds adds to that reservation."""
     availability = _lock_availability(db, item.availability_id)
     tomorrow = next_pickup_date()
     if availability is None or availability.available_date != tomorrow:
@@ -70,7 +85,7 @@ def _reserve(db: Session, student: Student, item: ReservationCreate) -> Reservat
     existing = (
         db.query(Reservation)
         .filter(
-            Reservation.student_id == student.id,
+            *_owned_by(customer),
             Reservation.availability_id == availability.id,
             Reservation.status.in_(ACTIVE_STATUSES),
         )
@@ -91,7 +106,7 @@ def _reserve(db: Session, student: Student, item: ReservationCreate) -> Reservat
         return existing
 
     reservation = Reservation(
-        student_id=student.id,
+        **customer,
         availability_id=availability.id,
         quantity=item.quantity,
         unit_price=availability.menu_item.price,
@@ -132,15 +147,15 @@ def view_next_day_menu(db: Session = Depends(get_db)):
 @router.post("/reservations", response_model=ReservationOut, status_code=status.HTTP_201_CREATED)
 def create_reservation(
     payload: ReservationCreate,
-    current_user: User = Depends(require_role("student")),
+    current_user: User = Depends(require_role("student", "teacher")),
     db: Session = Depends(get_db),
 ):
     """FR-S2: reserve a dish for the next day before the cut-off time."""
     if not is_before_cutoff(db):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cut-off time has passed for tomorrow's reservations")
 
-    student = _get_student(current_user, db)
-    reservation = _reserve(db, student, payload)
+    customer = _get_customer(current_user, db)
+    reservation = _reserve(db, customer,payload)
     db.commit()
     db.refresh(reservation)
     return _to_reservation_out(reservation)
@@ -149,7 +164,7 @@ def create_reservation(
 @router.post("/reservations/batch", response_model=list[ReservationOut], status_code=status.HTTP_201_CREATED)
 def create_reservations(
     payload: ReservationBatchCreate,
-    current_user: User = Depends(require_role("student")),
+    current_user: User = Depends(require_role("student", "teacher")),
     db: Session = Depends(get_db),
 ):
     """FR-S2: reserve several dishes, each in its own quantity, as one order.
@@ -161,10 +176,10 @@ def create_reservations(
     if len(ids) != len(set(ids)):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Each dish can only appear once in an order")
 
-    student = _get_student(current_user, db)
+    customer = _get_customer(current_user, db)
     # Lock rows in a fixed order so two concurrent orders can't deadlock.
     reservations = [
-        _reserve(db, student, item) for item in sorted(payload.items, key=lambda i: i.availability_id)
+        _reserve(db, customer,item) for item in sorted(payload.items, key=lambda i: i.availability_id)
     ]
     db.commit()
     for reservation in reservations:
@@ -176,14 +191,14 @@ def create_reservations(
 def update_reservation_quantity(
     reservation_id: int,
     payload: ReservationQuantityUpdate,
-    current_user: User = Depends(require_role("student")),
+    current_user: User = Depends(require_role("student", "teacher")),
     db: Session = Depends(get_db),
 ):
     """Change how many portions a reservation is for, before the cut-off time."""
-    student = _get_student(current_user, db)
+    customer = _get_customer(current_user, db)
     reservation = (
         db.query(Reservation)
-        .filter(Reservation.id == reservation_id, Reservation.student_id == student.id)
+        .filter(Reservation.id == reservation_id, *_owned_by(customer))
         .first()
     )
     if reservation is None:
@@ -208,15 +223,15 @@ def update_reservation_quantity(
 @router.delete("/reservations/{reservation_id}", response_model=ReservationOut)
 def cancel_reservation(
     reservation_id: int,
-    current_user: User = Depends(require_role("student")),
+    current_user: User = Depends(require_role("student", "teacher")),
     db: Session = Depends(get_db),
 ):
     """FR-S3: cancel a reservation before the cut-off time."""
-    student = _get_student(current_user, db)
+    customer = _get_customer(current_user, db)
     reservation = (
         db.query(Reservation)
         .options(joinedload(Reservation.availability).joinedload(MenuAvailability.menu_item))
-        .filter(Reservation.id == reservation_id, Reservation.student_id == student.id)
+        .filter(Reservation.id == reservation_id, *_owned_by(customer))
         .first()
     )
     if reservation is None:
@@ -236,15 +251,15 @@ def cancel_reservation(
 
 @router.get("/reservations/mine", response_model=list[ReservationOut])
 def my_reservations(
-    current_user: User = Depends(require_role("student")),
+    current_user: User = Depends(require_role("student", "teacher")),
     db: Session = Depends(get_db),
 ):
     """FR-S5: view a history of past and upcoming reservations."""
-    student = _get_student(current_user, db)
+    customer = _get_customer(current_user, db)
     reservations = (
         db.query(Reservation)
         .options(joinedload(Reservation.availability).joinedload(MenuAvailability.menu_item))
-        .filter(Reservation.student_id == student.id)
+        .filter(*_owned_by(customer))
         .order_by(Reservation.pickup_date.desc(), Reservation.reserved_at.desc())
         .all()
     )

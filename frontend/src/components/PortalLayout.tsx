@@ -12,6 +12,7 @@ interface NavItem {
 
 const ROLE_LABELS: Record<string, string> = {
   student: "Student",
+  teacher: "Teacher",
   canteen_staff: "Canteen Staff",
   school_admin: "School Admin",
 };

@@ -5,6 +5,7 @@ import type { Role, User } from "../../api/types";
 import { Button, Card, ErrorBanner, Modal, PageHeading, SuccessBanner } from "../../components/ui";
 import { LoadingScreen } from "../../components/LoadingScreen";
 import { IconEdit } from "../../components/icons";
+import { ImportUsersModal } from "./ImportUsersModal";
 
 const emptyForm: UserInput = {
   login_id: "",
@@ -14,38 +15,101 @@ const emptyForm: UserInput = {
   name: "",
   grade: "",
   section: "",
+  employee_id: "",
+  department: "",
 };
 
 const ROLE_GROUPS: { role: Role; label: string }[] = [
   { role: "student", label: "Students" },
+  { role: "teacher", label: "Teachers" },
   { role: "canteen_staff", label: "Canteen Staff" },
   { role: "school_admin", label: "School Admins" },
 ];
 
 const ROLE_BADGE_LABELS: Record<Role, string> = {
   student: "Student",
+  teacher: "Teacher",
   canteen_staff: "Canteen Staff",
   school_admin: "School Admin",
 };
 
+function RoleOptions() {
+  return (
+    <>
+      {ROLE_GROUPS.map(({ role }) => (
+        <option key={role} value={role}>
+          {ROLE_BADGE_LABELS[role]}
+        </option>
+      ))}
+    </>
+  );
+}
+
 function displayName(user: User): string {
-  return user.student?.name ?? user.login_id;
+  return user.student?.name ?? user.teacher?.name ?? user.login_id;
+}
+
+function profileDetails(user: User): string {
+  if (user.student) return `${user.student.grade} / ${user.student.section}`;
+  if (user.teacher) return [user.teacher.department, user.teacher.employee_id].filter(Boolean).join(" · ");
+  return "—";
 }
 
 function editFormFromUser(user: User): UserUpdateInput {
   return {
     email: user.email,
     role: user.role,
-    name: user.student?.name ?? "",
+    name: user.student?.name ?? user.teacher?.name ?? "",
     grade: user.student?.grade ?? "",
     section: user.student?.section ?? "",
+    employee_id: user.teacher?.employee_id ?? "",
+    department: user.teacher?.department ?? "",
   };
+}
+
+const inputClasses = "w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm";
+
+// Name, employee ID and department inputs, shared by the add and edit forms.
+function TeacherFields({
+  value,
+  onChange,
+}: {
+  value: { name?: string; employee_id?: string; department?: string };
+  onChange: (patch: { name?: string; employee_id?: string; department?: string }) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <input
+        required
+        placeholder="Full name"
+        className={inputClasses}
+        value={value.name ?? ""}
+        onChange={(e) => onChange({ name: e.target.value })}
+      />
+      <div className="flex gap-2">
+        <input
+          required
+          placeholder="Employee ID"
+          className={`${inputClasses} min-w-0 flex-1`}
+          value={value.employee_id ?? ""}
+          onChange={(e) => onChange({ employee_id: e.target.value })}
+        />
+        <input
+          placeholder="Department / subject (optional)"
+          className={`${inputClasses} min-w-0 flex-1`}
+          value={value.department ?? ""}
+          onChange={(e) => onChange({ department: e.target.value })}
+        />
+      </div>
+    </div>
+  );
 }
 
 export function AdminUsersPage() {
   const [users, setUsers] = useState<User[] | null>(null);
   const [form, setForm] = useState<UserInput>(emptyForm);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editForm, setEditForm] = useState<UserUpdateInput>({});
   const [error, setError] = useState<string | null>(null);
@@ -141,8 +205,15 @@ export function AdminUsersPage() {
   return (
     <div>
       <PageHeading
-        subtitle="Manage student, canteen staff, and admin accounts."
-        action={<Button onClick={() => setShowAddModal(true)}>+ Add account</Button>}
+        subtitle="Manage student, teacher, canteen staff, and admin accounts."
+        action={
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setShowImportModal(true)}>
+              Import from file
+            </Button>
+            <Button onClick={() => setShowAddModal(true)}>+ Add account</Button>
+          </div>
+        }
       >
         Accounts
       </PageHeading>
@@ -169,7 +240,7 @@ export function AdminUsersPage() {
                   <th className="whitespace-nowrap px-4 py-3">Name</th>
                   <th className="whitespace-nowrap px-4 py-3">Login ID</th>
                   <th className="whitespace-nowrap px-4 py-3">Email</th>
-                  <th className="whitespace-nowrap px-4 py-3">Grade/Section</th>
+                  <th className="whitespace-nowrap px-4 py-3">Details</th>
                   <th className="whitespace-nowrap px-4 py-3">Role</th>
                   <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
                 </tr>
@@ -190,7 +261,7 @@ export function AdminUsersPage() {
                         <td className="whitespace-nowrap px-4 py-2.5 text-gray-600">{user.login_id}</td>
                         <td className="whitespace-nowrap px-4 py-2.5 text-gray-600">{user.email}</td>
                         <td className="whitespace-nowrap px-4 py-2.5 text-gray-600">
-                          {user.student ? `${user.student.grade} / ${user.student.section}` : "—"}
+                          {profileDetails(user)}
                         </td>
                         <td className="whitespace-nowrap px-4 py-2.5">
                           <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
@@ -262,9 +333,7 @@ export function AdminUsersPage() {
                 value={form.role}
                 onChange={(e) => setForm({ ...form, role: e.target.value as Role })}
               >
-                <option value="student">Student</option>
-                <option value="canteen_staff">Canteen Staff</option>
-                <option value="school_admin">School Admin</option>
+                <RoleOptions />
               </select>
             </div>
             {form.role === "student" && (
@@ -292,11 +361,24 @@ export function AdminUsersPage() {
                 />
               </div>
             )}
+            {form.role === "teacher" && (
+              <TeacherFields value={form} onChange={(patch) => setForm({ ...form, ...patch })} />
+            )}
             <Button type="submit" disabled={submitting}>
               {submitting ? "Creating…" : "Create account"}
             </Button>
           </form>
         </Modal>
+      )}
+
+      {showImportModal && (
+        <ImportUsersModal
+          onClose={() => setShowImportModal(false)}
+          onImported={(count) => {
+            setNotice(`Imported ${count} ${count === 1 ? "account" : "accounts"}.`);
+            void load();
+          }}
+        />
       )}
 
       {editingUser && (
@@ -319,9 +401,7 @@ export function AdminUsersPage() {
                 value={editForm.role}
                 onChange={(e) => setEditForm({ ...editForm, role: e.target.value as Role })}
               >
-                <option value="student">Student</option>
-                <option value="canteen_staff">Canteen Staff</option>
-                <option value="school_admin">School Admin</option>
+                <RoleOptions />
               </select>
             </div>
             {editForm.role === "student" && (
@@ -348,6 +428,9 @@ export function AdminUsersPage() {
                   onChange={(e) => setEditForm({ ...editForm, section: e.target.value })}
                 />
               </div>
+            )}
+            {editForm.role === "teacher" && (
+              <TeacherFields value={editForm} onChange={(patch) => setEditForm({ ...editForm, ...patch })} />
             )}
             <Button type="submit" disabled={submitting}>
               {submitting ? "Saving…" : "Save changes"}

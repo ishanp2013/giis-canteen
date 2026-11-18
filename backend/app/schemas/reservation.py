@@ -26,9 +26,11 @@ class ReservationStatusUpdate(BaseModel):
     rejection_reason: Optional[str] = Field(default=None, max_length=500)
 
 
+CustomerType = Literal["student", "teacher"]
+
+
 class ReservationOut(BaseModel):
     id: int
-    student_id: int
     availability_id: int
     menu_item_id: int
     menu_item_name: str
@@ -51,8 +53,9 @@ class ReservationCountOut(BaseModel):
 
 class StaffReservationOut(BaseModel):
     id: int
-    student_id: int
-    student_name: str
+    # Who ordered: a student or a teacher
+    customer_type: CustomerType
+    customer_name: str
     availability_id: int
     menu_item_name: str
     quantity: int
@@ -68,6 +71,6 @@ class StaffReservationOut(BaseModel):
 
 
 class AdminReservationOut(StaffReservationOut):
-    student_grade: str
-    student_section: str
+    # Grade and section for a student; department and employee ID for a teacher
+    customer_detail: str
     reviewed_by_login_id: Optional[str] = None

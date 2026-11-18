@@ -92,7 +92,7 @@ export function AdminReservationsPage() {
                 <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase text-gray-500">
                   <tr>
                     <th className="px-3 py-2 font-medium">Reserved at</th>
-                    <th className="px-3 py-2 font-medium">Student</th>
+                    <th className="px-3 py-2 font-medium">Ordered by</th>
                     <th className="px-3 py-2 font-medium">Order</th>
                     <th className="px-3 py-2 font-medium">Pickup</th>
                     <th className="px-3 py-2 font-medium">Status</th>
@@ -106,10 +106,15 @@ export function AdminReservationsPage() {
                         {new Date(r.reserved_at).toLocaleString()}
                       </td>
                       <td className="px-3 py-2">
-                        <p className="text-gray-900">{r.student_name}</p>
-                        <p className="text-xs text-gray-500">
-                          Grade {r.student_grade} · {r.student_section}
+                        <p className="text-gray-900">
+                          {r.customer_name}
+                          {r.customer_type === "teacher" && (
+                            <span className="ml-1.5 rounded-full bg-purple-50 px-1.5 py-0.5 text-xs font-medium text-purple-700">
+                              Teacher
+                            </span>
+                          )}
                         </p>
+                        <p className="text-xs text-gray-500">{r.customer_detail}</p>
                       </td>
                       <td className="px-3 py-2">
                         <p className="text-gray-900">
