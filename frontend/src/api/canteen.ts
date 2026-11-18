@@ -31,8 +31,8 @@ export const canteenApi = {
     api.get<StaffReservation[]>(`/canteen/reservations${pickupDate ? `?pickup_date=${pickupDate}` : ""}`),
   getSummary: (pickupDate?: string) =>
     api.get<ReservationCount[]>(`/canteen/reservations/summary${pickupDate ? `?pickup_date=${pickupDate}` : ""}`),
-  updateReservationStatus: (id: number, status: ReservationStatus) =>
-    api.patch<StaffReservation>(`/canteen/reservations/${id}`, { status }),
+  updateReservationStatus: (id: number, status: ReservationStatus, rejection_reason?: string) =>
+    api.patch<StaffReservation>(`/canteen/reservations/${id}`, { status, rejection_reason }),
 
   downloadDailyReport: (date: string) => downloadFile(`/canteen/reports/daily?pickup_date=${date}`, `reservations_${date}.csv`),
   downloadWeeklyReport: (startDate: string) =>

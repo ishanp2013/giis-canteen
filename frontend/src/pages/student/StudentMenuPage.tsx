@@ -16,14 +16,20 @@ export function StudentMenuPage() {
   const [basket, setBasket] = useState<Record<number, number>>({});
   // Active reservations keyed by availability id, so each dish can show what's already held.
   const [held, setHeld] = useState<Record<number, Reservation>>({});
+  // Dishes the student has reserved before, most recent first.
+  const [recentMenuItemIds, setRecentMenuItemIds] = useState<number[]>([]);
 
   async function loadMenu() {
     try {
       const [menu, mine] = await Promise.all([studentApi.getMenu(), studentApi.getMyReservations()]);
       setItems(menu);
       setHeld(
-        Object.fromEntries(mine.filter((r) => r.status !== "cancelled").map((r) => [r.availability_id, r])),
+        Object.fromEntries(
+          mine.filter((r) => r.status !== "cancelled" && r.status !== "rejected").map((r) => [r.availability_id, r]),
+        ),
       );
+      const newestFirst = [...mine].sort((a, b) => b.reserved_at.localeCompare(a.reserved_at));
+      setRecentMenuItemIds([...new Set(newestFirst.map((r) => r.menu_item_id))]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load menu.");
     }
@@ -44,6 +50,12 @@ export function StudentMenuPage() {
   const totalPortions = picked.reduce((sum, p) => sum + p.quantity, 0);
   const totalPrice = picked.reduce((sum, p) => sum + p.quantity * p.item.price, 0);
 
+  // Recently ordered dishes that are on tomorrow's menu, for quick reordering.
+  const recentItems = recentMenuItemIds
+    .map((menuItemId) => items?.find((item) => item.menu_item_id === menuItemId))
+    .filter((item): item is Availability => item !== undefined)
+    .slice(0, 4);
+
   async function handleReserveAll() {
     setError(null);
     setSuccess(null);
@@ -59,6 +71,47 @@ export function StudentMenuPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function renderItemCard(item: Availability) {
+    return (
+      <Card key={item.id} className="flex flex-col gap-2">
+        <div>
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="font-medium text-gray-900">{item.menu_item_name}</h2>
+            <span className="shrink-0 font-semibold tabular-nums text-brand-navy">{formatAED(item.price)}</span>
+          </div>
+          {item.description && <p className="text-sm text-gray-500">{item.description}</p>}
+        </div>
+        <p className="text-sm text-gray-600">
+          {item.remaining_availability > 0
+            ? `${item.remaining_availability} left`
+            : "Fully booked"}
+        </p>
+        {held[item.id] && (
+          <p className="text-sm">
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+              You've reserved {held[item.id].quantity}
+            </span>{" "}
+            <Link to="/student/history" className="text-brand-blue hover:underline">
+              Manage
+            </Link>
+          </p>
+        )}
+        {item.remaining_availability > 0 && (!held[item.id] || held[item.id].status === "reserved") && (
+          <div className="flex items-center gap-3">
+            <QuantityStepper
+              value={quantityFor(item)}
+              min={0}
+              max={item.remaining_availability}
+              disabled={submitting}
+              onChange={(q) => setBasket((prev) => ({ ...prev, [item.id]: q }))}
+            />
+            {held[item.id] && <span className="text-xs text-gray-500">adds to your reservation</span>}
+          </div>
+        )}
+      </Card>
+    );
   }
 
   if (items === null && !error) return <LoadingScreen />;
@@ -80,46 +133,16 @@ export function StudentMenuPage() {
         </Card>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {items?.map((item) => (
-          <Card key={item.id} className="flex flex-col gap-2">
-            <div>
-              <div className="flex items-baseline justify-between gap-3">
-                <h2 className="font-medium text-gray-900">{item.menu_item_name}</h2>
-                <span className="shrink-0 font-semibold tabular-nums text-brand-navy">{formatAED(item.price)}</span>
-              </div>
-              {item.description && <p className="text-sm text-gray-500">{item.description}</p>}
-            </div>
-            <p className="text-sm text-gray-600">
-              {item.remaining_availability > 0
-                ? `${item.remaining_availability} left`
-                : "Fully booked"}
-            </p>
-            {held[item.id] && (
-              <p className="text-sm">
-                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                  You've reserved {held[item.id].quantity}
-                </span>{" "}
-                <Link to="/student/history" className="text-brand-blue hover:underline">
-                  Manage
-                </Link>
-              </p>
-            )}
-            {item.remaining_availability > 0 && (!held[item.id] || held[item.id].status === "reserved") && (
-              <div className="flex items-center gap-3">
-                <QuantityStepper
-                  value={quantityFor(item)}
-                  min={0}
-                  max={item.remaining_availability}
-                  disabled={submitting}
-                  onChange={(q) => setBasket((prev) => ({ ...prev, [item.id]: q }))}
-                />
-                {held[item.id] && <span className="text-xs text-gray-500">adds to your reservation</span>}
-              </div>
-            )}
-          </Card>
-        ))}
-      </div>
+      {recentItems.length > 0 && (
+        <section className="mb-6">
+          <h2 className="font-semibold text-brand-navy">Order again</h2>
+          <p className="mb-3 text-sm text-gray-500">Dishes you've reserved recently that are on tomorrow's menu.</p>
+          <div className="grid gap-3 sm:grid-cols-2">{recentItems.map(renderItemCard)}</div>
+        </section>
+      )}
+
+      {recentItems.length > 0 && <h2 className="mb-3 font-semibold text-brand-navy">Full menu</h2>}
+      <div className="grid gap-3 sm:grid-cols-2">{items?.map(renderItemCard)}</div>
 
       {picked.length > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-4 py-3 shadow-lg">

@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from app.models.reservation import Reservation
 from app.models.setting import Setting
 
-ACTIVE_STATUSES = ("reserved", "prepared", "collected")
+# Statuses that hold portions. Rejected and cancelled reservations free theirs.
+ACTIVE_STATUSES = ("reserved", "accepted", "prepared", "collected")
 
 
 def get_cutoff_time(db: Session):

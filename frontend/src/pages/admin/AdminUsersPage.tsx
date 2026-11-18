@@ -117,8 +117,10 @@ export function AdminUsersPage() {
 
   async function handleDelete(user: User) {
     setError(null);
+    setNotice(null);
     try {
       await adminApi.deleteUser(user.id);
+      setNotice(`Account "${user.login_id}" deleted.`);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to delete account.");

@@ -7,19 +7,25 @@ A web app for reserving next-day canteen meals at school. Students order dishes 
 **Students**
 - Browse tomorrow's menu with each dish's price (AED) and how many portions are left
 - Build an order across several dishes, picking a quantity for each (e.g. 2 samosas and 3 fried rice), see the running total and reserve it all in one step
+- Reorder quickly from an **Order again** section that shows dishes they've reserved recently that are on tomorrow's menu
 - Add more portions to a dish they've already reserved
-- Change a reservation's quantity or cancel it before the cut-off time (15:00 by default)
-- View past and upcoming reservations with what each one costs
+- Change a reservation's quantity or cancel it before the cut-off time (15:00 by default), as long as the canteen hasn't accepted it yet
+- View past and upcoming reservations with what each one costs, including whether the canteen accepted or rejected them and the canteen's note if rejected
+- Send suggestions and complaints to the school admins
 
 **Canteen staff**
 - Keep a catalog of dishes with name, description and price in AED
 - Choose which dishes are offered on which date, and how many portions each
-- See each day's reservations (quantity, student and order total) and per-dish portion counts, and mark orders as `prepared` or `collected`
-- Download daily and weekly CSV reports, including quantities, unit prices and totals
+- See each day's reservations (quantity, student, order total and when it was ordered) and per-dish portion counts
+- Accept or reject each new order, with an optional note to the student when rejecting, then mark accepted orders as `prepared` and `collected`
+- Download daily and weekly CSV reports, including quantities, unit prices, totals, order times and rejection notes
+- Send suggestions and complaints to the school admins
 
 **School admins**
-- Create, edit and delete student, staff and admin accounts
+- Create, edit and delete student, staff and admin accounts (deleting deactivates the account and keeps its history)
 - Reset a user's password to a temporary one
+- See every reservation made in a date range (the past week by default) with the exact time it was made, whether it was accepted or rejected, who handled it, and the rejection note
+- Read suggestions and complaints from students and staff, and mark them resolved
 - Set the school-wide daily cut-off time
 - View usage analytics (reservations, cancellations, most-reserved dishes, portions not needed) and the audit log
 
@@ -28,7 +34,8 @@ A web app for reserving next-day canteen meals at school. Students order dishes 
 - A dish can't be reserved beyond its quantity for that day. Availability counts portions, not reservations.
 - A multi-dish order is all or nothing: if any dish doesn't have enough portions left, nothing is reserved.
 - A student holds one reservation per dish per day. Ordering the same dish again adds to that reservation.
-- Once staff mark an order `prepared`, the student can no longer change or cancel it.
+- Every new order waits for staff to accept or reject it. Staff can only mark an order `prepared` after accepting it, and can still reject an accepted order until it's prepared.
+- Once staff accept an order, the student can no longer change or cancel it. A rejected order frees its portions straight away, and the student can order that dish again.
 - Each reservation saves the dish's price when it's made, so later price changes don't affect existing orders.
 - Logins, password changes and admin actions are written to the audit log, and every API request is logged.
 
@@ -82,7 +89,8 @@ A web app for reserving next-day canteen meals at school. Students order dishes 
 | `students` | Name, grade and section for student accounts |
 | `menu_items` | The catalog of dishes and their price in AED |
 | `menu_availability` | Which dish is offered on which date, and how many portions |
-| `reservations` | A student's order for one dish on one day: quantity, unit price at time of ordering and status |
+| `reservations` | A student's order for one dish on one day: quantity, unit price at time of ordering, status, and who accepted or rejected it (with an optional rejection note) |
+| `feedback` | Suggestions and complaints from students and canteen staff, and whether an admin has resolved them |
 | `audit_logs` | Logins, password changes and admin actions |
 | `settings` | The school-wide daily cut-off time |
 
@@ -204,7 +212,10 @@ Every route except `/auth/login`, `/auth/refresh` and `/health` needs a signed-i
 | Auth | `POST /auth/login`, `POST /auth/refresh`, `GET /auth/me`, `POST /auth/change-password`, `POST /auth/logout` |
 | Student | `GET /menu`, `POST /reservations`, `POST /reservations/batch`, `PATCH /reservations/{id}`, `DELETE /reservations/{id}`, `GET /reservations/mine` |
 | Canteen | `GET/POST /canteen/menu`, `PATCH/DELETE /canteen/menu/{id}`, `GET/POST /canteen/availability`, `PATCH/DELETE /canteen/availability/{id}`, `GET /canteen/reservations`, `GET /canteen/reservations/summary`, `PATCH /canteen/reservations/{id}`, `GET /canteen/reports/daily`, `GET /canteen/reports/weekly` |
-| Admin | `GET/POST /admin/users`, `GET/PATCH/DELETE /admin/users/{id}`, `POST /admin/users/{id}/reset-password`, `GET/PATCH /admin/settings`, `GET /admin/analytics`, `GET /admin/logs` |
+| Admin | `GET/POST /admin/users`, `GET/PATCH/DELETE /admin/users/{id}`, `POST /admin/users/{id}/reset-password`, `GET /admin/reservations`, `GET /admin/feedback`, `PATCH /admin/feedback/{id}`, `GET/PATCH /admin/settings`, `GET /admin/analytics`, `GET /admin/logs` |
+| Feedback (student, canteen staff) | `POST /feedback`, `GET /feedback/mine` |
+
+Canteen staff move an order through its statuses with `PATCH /canteen/reservations/{id}`, e.g. `{"status": "accepted"}`, or `{"status": "rejected", "rejection_reason": "Sorry, we ran out of rice"}`. The order is `reserved` → `accepted` or `rejected` → `prepared` → `collected`.
 
 Student reservation endpoints:
 

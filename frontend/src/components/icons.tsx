@@ -23,6 +23,16 @@ export function IconMenu(props: IconProps) {
   );
 }
 
+export function IconMessage(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4V6a1 1 0 0 1 1-1z" />
+      <path d="M8 10h8" />
+      <path d="M8 13h5" />
+    </svg>
+  );
+}
+
 export function IconHistory(props: IconProps) {
   return (
     <svg {...base} {...props}>

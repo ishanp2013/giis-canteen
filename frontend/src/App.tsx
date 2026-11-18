@@ -14,12 +14,16 @@ import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
 import { AdminSettingsPage } from "./pages/admin/AdminSettingsPage";
 import { AdminAnalyticsPage } from "./pages/admin/AdminAnalyticsPage";
 import { AdminLogsPage } from "./pages/admin/AdminLogsPage";
+import { AdminReservationsPage } from "./pages/admin/AdminReservationsPage";
+import { AdminFeedbackPage } from "./pages/admin/AdminFeedbackPage";
+import { FeedbackPage } from "./pages/FeedbackPage";
 import {
   IconChart,
   IconClipboard,
   IconHistory,
   IconLogs,
   IconMenu,
+  IconMessage,
   IconPackage,
   IconReport,
   IconSettings,
@@ -56,6 +60,7 @@ export default function App() {
               navItems={[
                 { to: "/student/menu", label: "Menu", icon: IconMenu },
                 { to: "/student/history", label: "My Reservations", icon: IconHistory },
+                { to: "/student/feedback", label: "Feedback", icon: IconMessage },
               ]}
             />
           </ProtectedRoute>
@@ -63,6 +68,7 @@ export default function App() {
       >
         <Route path="menu" element={<StudentMenuPage />} />
         <Route path="history" element={<StudentHistoryPage />} />
+        <Route path="feedback" element={<FeedbackPage />} />
       </Route>
 
       <Route
@@ -76,6 +82,7 @@ export default function App() {
                 { to: "/canteen/availability", label: "Availability", icon: IconPackage },
                 { to: "/canteen/reservations", label: "Reservations", icon: IconClipboard },
                 { to: "/canteen/reports", label: "Reports", icon: IconReport },
+                { to: "/canteen/feedback", label: "Feedback", icon: IconMessage },
               ]}
             />
           </ProtectedRoute>
@@ -85,6 +92,7 @@ export default function App() {
         <Route path="availability" element={<CanteenAvailabilityPage />} />
         <Route path="reservations" element={<CanteenReservationsPage />} />
         <Route path="reports" element={<CanteenReportsPage />} />
+        <Route path="feedback" element={<FeedbackPage />} />
       </Route>
 
       <Route
@@ -95,6 +103,8 @@ export default function App() {
               title="School Admin"
               navItems={[
                 { to: "/admin/users", label: "Accounts", icon: IconUsers },
+                { to: "/admin/reservations", label: "Reservations", icon: IconClipboard },
+                { to: "/admin/feedback", label: "Feedback", icon: IconMessage },
                 { to: "/admin/settings", label: "Settings", icon: IconSettings },
                 { to: "/admin/analytics", label: "Analytics", icon: IconChart },
                 { to: "/admin/logs", label: "Audit Log", icon: IconLogs },
@@ -104,6 +114,8 @@ export default function App() {
         }
       >
         <Route path="users" element={<AdminUsersPage />} />
+        <Route path="reservations" element={<AdminReservationsPage />} />
+        <Route path="feedback" element={<AdminFeedbackPage />} />
         <Route path="settings" element={<AdminSettingsPage />} />
         <Route path="analytics" element={<AdminAnalyticsPage />} />
         <Route path="logs" element={<AdminLogsPage />} />

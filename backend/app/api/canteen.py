@@ -3,11 +3,12 @@ import io
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.dependencies import require_role
-from app.core.reservations import ACTIVE_STATUSES, next_pickup_date, reserved_count
+from app.core.reservations import next_pickup_date, reserved_count
 from app.database import get_db
 from app.models.menu_availability import MenuAvailability
 from app.models.menu_item import MenuItem
@@ -181,6 +182,8 @@ def _staff_reservation_out(r: Reservation) -> StaffReservationOut:
         status=r.status,
         reserved_at=r.reserved_at,
         pickup_date=r.pickup_date,
+        rejection_reason=r.rejection_reason,
+        reviewed_at=r.reviewed_at,
     )
 
 
@@ -225,15 +228,29 @@ def reservation_summary(
     ]
 
 
+# Which status a reservation must be in before staff can move it to each status.
+# A new order is accepted or rejected first, then prepared, then collected.
+STAFF_TRANSITIONS = {
+    "accepted": ("reserved",),
+    "rejected": ("reserved", "accepted"),
+    "prepared": ("accepted",),
+    "collected": ("prepared",),
+}
+
+
 @router.patch("/reservations/{reservation_id}", response_model=StaffReservationOut)
 def update_reservation_status(
     reservation_id: int,
     payload: ReservationStatusUpdate,
+    current_user: User = Depends(require_role("canteen_staff")),
     db: Session = Depends(get_db),
 ):
-    """FR-C3: mark a reservation as prepared or collected."""
-    if payload.status not in ("prepared", "collected"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Staff may only set status to 'prepared' or 'collected'")
+    """FR-C3: accept or reject a reservation, then mark it prepared and collected."""
+    if payload.status not in STAFF_TRANSITIONS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Staff may only set status to 'accepted', 'rejected', 'prepared' or 'collected'",
+        )
 
     reservation = (
         db.query(Reservation)
@@ -246,10 +263,18 @@ def update_reservation_status(
     )
     if reservation is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Reservation not found")
-    if reservation.status not in ACTIVE_STATUSES:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cancelled reservations cannot be updated")
+    if reservation.status not in STAFF_TRANSITIONS[payload.status]:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"A {reservation.status} reservation can't be marked {payload.status}",
+        )
 
     reservation.status = payload.status
+    if payload.status in ("accepted", "rejected"):
+        reservation.reviewed_at = func.now()
+        reservation.reviewed_by = current_user.id
+    if payload.status == "rejected":
+        reservation.rejection_reason = (payload.rejection_reason or "").strip() or None
     db.commit()
     db.refresh(reservation)
     return _staff_reservation_out(reservation)
@@ -258,9 +283,9 @@ def update_reservation_status(
 def _reservations_csv(reservations: list[Reservation]) -> str:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["reservation_id", "student_name", "menu_item_name", "quantity", "unit_price_aed", "total_aed", "status", "pickup_date"])
+    writer.writerow(["reservation_id", "student_name", "menu_item_name", "quantity", "unit_price_aed", "total_aed", "status", "pickup_date", "reserved_at", "rejection_reason"])
     for r in reservations:
-        writer.writerow([r.id, r.student.name, r.availability.menu_item.name, r.quantity, r.unit_price, r.quantity * r.unit_price, r.status, r.pickup_date])
+        writer.writerow([r.id, r.student.name, r.availability.menu_item.name, r.quantity, r.unit_price, r.quantity * r.unit_price, r.status, r.pickup_date, r.reserved_at.isoformat(timespec="seconds"), r.rejection_reason or ""])
     return buffer.getvalue()
 
 

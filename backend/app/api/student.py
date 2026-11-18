@@ -31,12 +31,14 @@ def _to_reservation_out(reservation: Reservation) -> ReservationOut:
         id=reservation.id,
         student_id=reservation.student_id,
         availability_id=reservation.availability_id,
+        menu_item_id=reservation.availability.menu_item_id,
         menu_item_name=reservation.availability.menu_item.name,
         quantity=reservation.quantity,
         unit_price=reservation.unit_price,
         status=reservation.status,
         reserved_at=reservation.reserved_at,
         pickup_date=reservation.pickup_date,
+        rejection_reason=reservation.rejection_reason,
     )
 
 
@@ -76,7 +78,7 @@ def _reserve(db: Session, student: Student, item: ReservationCreate) -> Reservat
     )
     if existing is not None and existing.status != "reserved":
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, f"Your {item_name} order is already being prepared and can't be changed"
+            status.HTTP_400_BAD_REQUEST, f"Your {item_name} order has already been accepted by the canteen and can't be changed"
         )
 
     # FR-C5: prevent reservations beyond the set quantity available.
@@ -187,7 +189,7 @@ def update_reservation_quantity(
     if reservation is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Reservation not found")
     if reservation.status != "reserved":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only reservations that haven't been prepared can be changed")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only reservations the canteen hasn't accepted yet can be changed")
     if not is_before_cutoff(db) or reservation.pickup_date != next_pickup_date():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cut-off time has passed; reservation can no longer be changed")
 
@@ -221,6 +223,8 @@ def cancel_reservation(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Reservation not found")
     if reservation.status == "cancelled":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Reservation is already cancelled")
+    if reservation.status != "reserved":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only reservations the canteen hasn't accepted yet can be cancelled")
     if not is_before_cutoff(db):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cut-off time has passed; reservation can no longer be cancelled")
 
@@ -241,7 +245,7 @@ def my_reservations(
         db.query(Reservation)
         .options(joinedload(Reservation.availability).joinedload(MenuAvailability.menu_item))
         .filter(Reservation.student_id == student.id)
-        .order_by(Reservation.pickup_date.desc())
+        .order_by(Reservation.pickup_date.desc(), Reservation.reserved_at.desc())
         .all()
     )
     return [_to_reservation_out(r) for r in reservations]

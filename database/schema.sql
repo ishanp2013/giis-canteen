@@ -10,12 +10,18 @@ CREATE TABLE roles (
 
 CREATE TABLE users (
     id            SERIAL PRIMARY KEY,
-    login_id      VARCHAR(50)  NOT NULL UNIQUE,
-    email         VARCHAR(255) NOT NULL UNIQUE,
+    login_id      VARCHAR(50)  NOT NULL,
+    email         VARCHAR(255) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role_id       INTEGER      NOT NULL REFERENCES roles(id),
-    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    -- Deleting an account deactivates it, so its orders and audit log entries keep pointing at it
+    is_active     BOOLEAN      NOT NULL DEFAULT true
 );
+
+-- login_id and email only need to be unique among active accounts
+CREATE UNIQUE INDEX users_login_id_active_key ON users (login_id) WHERE is_active;
+CREATE UNIQUE INDEX users_email_active_key ON users (email) WHERE is_active;
 
 CREATE TABLE students (
     id      SERIAL PRIMARY KEY,
@@ -53,10 +59,14 @@ CREATE TABLE reservations (
     availability_id INTEGER    NOT NULL REFERENCES menu_availability(id),
     quantity       INTEGER     NOT NULL DEFAULT 1 CHECK (quantity > 0),
     unit_price     NUMERIC(8, 2) NOT NULL DEFAULT 0 CHECK (unit_price >= 0),  -- AED per portion when reserved
+    -- 'reserved' = waiting for staff, who accept or reject it before preparing it
     status        VARCHAR(20) NOT NULL DEFAULT 'reserved'
-        CHECK (status IN ('reserved', 'prepared', 'collected', 'cancelled')),
+        CHECK (status IN ('reserved', 'accepted', 'rejected', 'prepared', 'collected', 'cancelled')),
     reserved_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    pickup_date    DATE        NOT NULL
+    pickup_date    DATE        NOT NULL,
+    rejection_reason VARCHAR(500),                       -- optional note to the student when rejected
+    reviewed_at    TIMESTAMPTZ,                          -- when staff accepted or rejected it
+    reviewed_by    INTEGER     REFERENCES users(id)      -- which staff member did
 );
 
 CREATE TABLE audit_logs (
@@ -76,10 +86,23 @@ CREATE TABLE settings (
     updated_by  INTEGER     REFERENCES users(id)
 );
 
+-- Suggestions and complaints sent by students and canteen staff to the admins.
+CREATE TABLE feedback (
+    id         SERIAL PRIMARY KEY,
+    user_id    INTEGER      NOT NULL REFERENCES users(id),
+    category   VARCHAR(20)  NOT NULL CONSTRAINT feedback_category_check CHECK (category IN ('suggestion', 'complaint')),
+    subject    VARCHAR(200) NOT NULL,
+    message    TEXT         NOT NULL,
+    status     VARCHAR(20)  NOT NULL DEFAULT 'open' CONSTRAINT feedback_status_check CHECK (status IN ('open', 'resolved')),
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
 CREATE INDEX idx_menu_availability_available_date ON menu_availability(available_date);
 CREATE INDEX idx_reservations_student_id ON reservations(student_id);
 CREATE INDEX idx_reservations_pickup_date ON reservations(pickup_date);
+CREATE INDEX idx_reservations_reserved_at ON reservations(reserved_at);
 CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
+CREATE INDEX idx_feedback_user_id ON feedback(user_id);
 
 INSERT INTO roles (name) VALUES
     ('student'),

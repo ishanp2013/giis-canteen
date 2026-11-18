@@ -12,6 +12,7 @@ class Reservation(Base):
     __table_args__ = (
         Index("idx_reservations_student_id", "student_id"),
         Index("idx_reservations_pickup_date", "pickup_date"),
+        Index("idx_reservations_reserved_at", "reserved_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -23,6 +24,11 @@ class Reservation(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="reserved")
     reserved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     pickup_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # Set when canteen staff accept or reject the reservation.
+    rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     student: Mapped["Student"] = relationship(back_populates="reservations")
     availability: Mapped["MenuAvailability"] = relationship(back_populates="reservations")
+    reviewer: Mapped["User | None"] = relationship(foreign_keys=[reviewed_by])

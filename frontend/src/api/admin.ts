@@ -1,5 +1,16 @@
 import { api } from "./client";
-import type { Analytics, AuditLog, Role, Settings, User } from "./types";
+import type {
+  AdminFeedback,
+  AdminReservation,
+  Analytics,
+  AuditLog,
+  FeedbackCategory,
+  FeedbackStatus,
+  ReservationStatus,
+  Role,
+  Settings,
+  User,
+} from "./types";
 
 export interface UserInput {
   login_id: string;
@@ -39,4 +50,20 @@ export const adminApi = {
     const qs = query.toString();
     return api.get<AuditLog[]>(`/admin/logs${qs ? `?${qs}` : ""}`);
   },
+
+  listReservations: (params: { start_date: string; end_date: string; status?: ReservationStatus }) => {
+    const query = new URLSearchParams({ start_date: params.start_date, end_date: params.end_date });
+    if (params.status) query.set("status", params.status);
+    return api.get<AdminReservation[]>(`/admin/reservations?${query}`);
+  },
+
+  listFeedback: (params?: { category?: FeedbackCategory; status?: FeedbackStatus }) => {
+    const query = new URLSearchParams();
+    if (params?.category) query.set("category", params.category);
+    if (params?.status) query.set("status", params.status);
+    const qs = query.toString();
+    return api.get<AdminFeedback[]>(`/admin/feedback${qs ? `?${qs}` : ""}`);
+  },
+  updateFeedbackStatus: (id: number, status: FeedbackStatus) =>
+    api.patch<AdminFeedback>(`/admin/feedback/${id}`, { status }),
 };

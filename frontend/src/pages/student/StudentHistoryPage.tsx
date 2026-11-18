@@ -1,17 +1,11 @@
 import { useEffect, useState } from "react";
 import { studentApi } from "../../api/student";
 import { ApiError } from "../../api/client";
-import type { Availability, Reservation, ReservationStatus } from "../../api/types";
+import type { Availability, Reservation } from "../../api/types";
 import { Button, Card, ErrorBanner, PageHeading, QuantityStepper } from "../../components/ui";
 import { LoadingScreen } from "../../components/LoadingScreen";
 import { formatAED } from "../../utils/money";
-
-const STATUS_STYLES: Record<ReservationStatus, string> = {
-  reserved: "bg-blue-50 text-blue-700",
-  prepared: "bg-amber-50 text-amber-700",
-  collected: "bg-emerald-50 text-emerald-700",
-  cancelled: "bg-gray-100 text-gray-500",
-};
+import { STATUS_LABELS, STATUS_STYLES } from "../../utils/reservationStatus";
 
 export function StudentHistoryPage() {
   const [reservations, setReservations] = useState<Reservation[] | null>(null);
@@ -98,6 +92,11 @@ export function StudentHistoryPage() {
                   <span className="font-medium tabular-nums text-gray-900">{formatAED(r.unit_price * draft)}</span>
                 </p>
                 <p className="text-sm text-gray-500">Pickup: {r.pickup_date}</p>
+                {r.status === "rejected" && (
+                  <p className="mt-1 text-sm text-red-700">
+                    The canteen declined this order{r.rejection_reason ? `: "${r.rejection_reason}"` : "."}
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 {maxQuantity !== null && (
@@ -116,7 +115,7 @@ export function StudentHistoryPage() {
                   </>
                 )}
                 <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLES[r.status]}`}>
-                  {r.status}
+                  {STATUS_LABELS[r.status]}
                 </span>
                 {r.status === "reserved" && (
                   <Button variant="danger" disabled={busy} onClick={() => void handleCancel(r.id)}>

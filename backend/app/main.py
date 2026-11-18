@@ -4,7 +4,7 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, auth, canteen, student
+from app.api import admin, auth, canteen, feedback, student
 from app.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -40,3 +40,4 @@ app.include_router(auth.router)
 app.include_router(student.router)
 app.include_router(canteen.router)
 app.include_router(admin.router)
+app.include_router(feedback.router)

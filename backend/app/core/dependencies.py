@@ -20,7 +20,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token type")
 
     user = db.get(User, int(payload["sub"]))
-    if user is None:
+    if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
 
     return user

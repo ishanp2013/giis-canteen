@@ -1,9 +1,10 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-ReservationStatus = Literal["reserved", "prepared", "collected", "cancelled"]
+# "reserved" means the order is waiting for canteen staff to accept or reject it.
+ReservationStatus = Literal["reserved", "accepted", "rejected", "prepared", "collected", "cancelled"]
 
 
 class ReservationCreate(BaseModel):
@@ -21,18 +22,22 @@ class ReservationQuantityUpdate(BaseModel):
 
 class ReservationStatusUpdate(BaseModel):
     status: ReservationStatus
+    # Optional note to the student, only used when rejecting.
+    rejection_reason: Optional[str] = Field(default=None, max_length=500)
 
 
 class ReservationOut(BaseModel):
     id: int
     student_id: int
     availability_id: int
+    menu_item_id: int
     menu_item_name: str
     quantity: int
     unit_price: float
     status: ReservationStatus
     reserved_at: datetime
     pickup_date: date
+    rejection_reason: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -55,6 +60,14 @@ class StaffReservationOut(BaseModel):
     status: ReservationStatus
     reserved_at: datetime
     pickup_date: date
+    rejection_reason: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+class AdminReservationOut(StaffReservationOut):
+    student_grade: str
+    student_section: str
+    reviewed_by_login_id: Optional[str] = None

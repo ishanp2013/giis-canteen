@@ -45,7 +45,7 @@ def _set_auth_cookies(response: Response, user: User) -> None:
 
 @router.post("/login", response_model=LoginResponse)
 def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.login_id == payload.login_id).first()
+    user = db.query(User).filter(User.login_id == payload.login_id, User.is_active).first()
 
     if user is None or not verify_password(payload.password, user.password_hash):
         if user is not None:
@@ -75,7 +75,7 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token type")
 
     user = db.get(User, int(payload["sub"]))
-    if user is None:
+    if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
 
     _set_auth_cookies(response, user)
